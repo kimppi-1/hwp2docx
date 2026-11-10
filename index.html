@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한글 → 워드 변환기 (hwp2docx)</title>
+<meta name="description" content="한글(HWP) 문서를 글꼴·자간·줄 간격·여백·표 모양 그대로 워드(DOCX)로 옮기는 변환기. 파일은 컴퓨터 밖으로 나가지 않습니다.">
+<style>
+  :root {
+    --ink: #1c2330; --sub: #5b6677; --line: #d9dee7; --paper: #ffffff; --bg: #f3f5f8;
+    --accent: #1f4e9c; --accent-soft: #e8eefa; --ok: #1d7a46; --warn: #a15c00; --warn-soft: #fff4de; --bad: #b3261e; --bad-soft: #fdecea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e7ebf2; --sub: #9aa6b8; --line: #2e3644; --paper: #1b212b; --bg: #12161d;
+      --accent: #8fb4ff; --accent-soft: #1d2a44; --ok: #6fd39b; --warn: #f0b860; --warn-soft: #3a2c10; --bad: #ff8f86; --bad-soft: #3d1b18; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 "Pretendard", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .lead { color: var(--sub); margin: 0 0 28px; }
+  .drop { background: var(--paper); border: 2px dashed var(--line); border-radius: 14px; padding: 44px 20px; text-align: center; transition: border-color .15s, background .15s; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop strong { display: block; font-size: 19px; margin-bottom: 4px; }
+  .drop span { color: var(--sub); font-size: 14px; }
+  button, .btn { font: inherit; cursor: pointer; border-radius: 9px; border: 1px solid var(--accent); background: var(--accent); color: var(--paper); padding: 9px 18px; font-weight: 600; text-decoration: none; display: inline-block; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button:focus-visible, .btn:focus-visible, summary:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .drop button { margin-top: 16px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 16px 2px 0; font-size: 14px; color: var(--sub); }
+  .opts label { display: flex; gap: 7px; align-items: center; cursor: pointer; }
+  #results { margin-top: 26px; display: grid; gap: 14px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .card h2 { font-size: 16px; margin: 0; word-break: break-all; }
+  .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .meta { color: var(--sub); font-size: 13px; margin-top: 2px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 1px 8px; margin: 3px 4px 0 0; }
+  .tag.ok { color: var(--ok); border: 1px solid currentColor; }
+  .tag.warn { color: var(--warn); background: var(--warn-soft); }
+  .tag.bad { color: var(--bad); background: var(--bad-soft); }
+  .msg { font-size: 14px; margin: 10px 0 0; padding: 9px 12px; border-radius: 8px; }
+  .msg.warn { background: var(--warn-soft); color: var(--warn); }
+  .msg.bad { background: var(--bad-soft); color: var(--bad); }
+  details { margin-top: 10px; font-size: 14px; }
+  summary { cursor: pointer; color: var(--sub); }
+  details ul { margin: 8px 0 0; padding-left: 20px; color: var(--sub); }
+  section.info { margin-top: 40px; font-size: 14.5px; }
+  section.info h3 { font-size: 15px; margin: 22px 0 6px; }
+  section.info ul { margin: 0; padding-left: 20px; color: var(--sub); }
+  footer { margin-top: 40px; font-size: 13px; color: var(--sub); border-top: 1px solid var(--line); padding-top: 16px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>한글 → 워드 변환기</h1>
+  <p class="lead">한글(HWP) 문서를 글꼴, 자간, 줄 간격, 여백, 표 모양 그대로 워드(DOCX)로 옮깁니다. 파일은 이 컴퓨터 밖으로 나가지 않습니다.</p>
+
+  <div class="drop" id="drop">
+    <strong>한글 파일을 여기에 끌어다 놓으세요</strong>
+    <span>.hwp 파일, 여러 개도 됩니다</span><br>
+    <button type="button" id="pick">파일 고르기</button>
+    <input type="file" id="file" accept=".hwp" multiple hidden>
+  </div>
+
+  <div class="opts">
+    <label><input type="checkbox" id="keepPages" checked> 쪽이 넘어가는 자리를 한글과 똑같이 고정</label>
+    <label><input type="checkbox" id="keepLines"> 줄 바꿈 자리도 한글과 똑같이 고정 (나중에 글을 고치기는 불편해집니다)</label>
+    <label><input type="checkbox" id="notWord"> MS 워드가 아닌 프로그램에서 열 파일</label>
+  </div>
+
+  <div id="results" aria-live="polite"></div>
+
+  <section class="info">
+    <h3>똑같이 보이려면</h3>
+    <ul>
+      <li>문서에 쓰인 글꼴이 워드 파일을 여는 컴퓨터에도 설치돼 있어야 합니다. 변환한 뒤 글꼴별로 설치 여부를 알려 드립니다.</li>
+      <li>MS 워드 기준으로 맞췄습니다. 한컴오피스, 구글 문서, LibreOffice에서 열면 띄어쓰기 폭과 표 높이가 조금 달라집니다.</li>
+      <li>워드에서 바로 인쇄하면 한글보다 글자가 진하게 나올 수 있습니다. 워드에서 PDF로 저장한 뒤 인쇄하면 한글과 같게 나옵니다.</li>
+    </ul>
+    <h3>아직 옮기지 못하는 것</h3>
+    <ul>
+      <li>그림, 그리기 개체, 글상자, 각주, 수식</li>
+      <li>.hwpx 파일과 암호가 걸린 파일 (한글에서 .hwp로 다시 저장하면 됩니다)</li>
+    </ul>
+  </section>
+
+  <footer>
+    hwp2docx · 띄어쓰기 폭, 표 높이, 세로 위치 규칙은 한글과 MS 워드의 실제 출력을 줄 단위로 대조해 맞췄습니다.
+    <span id="src"></span>
+  </footer>
+</main>
+
+<script src="hwp2docx.bundle.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const drop = $('drop'), input = $('file'), results = $('results');
+  const KNOWN = Hwp2Docx.HANGUL_ADVANCE;
+
+  // 저장소 주소 표시 (github.io 에서 열렸을 때만)
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  if (m) { const repo = location.pathname.split('/').filter(Boolean)[0]; if (repo) $('src').innerHTML = ` · <a href="https://github.com/${m[1]}/${repo}">소스와 업데이트 내역</a>`; }
+
+  // 글꼴 설치 여부: 지정 글꼴로 그린 폭이 기본 글꼴 두 가지의 폭과 모두 같으면 없는 것으로 본다
+  const ctx = document.createElement('canvas').getContext('2d');
+  const SAMPLE = '가나다라 한글 Abg 123 ☐';
+  function width(font) { ctx.font = `40px ${font}`; return ctx.measureText(SAMPLE).width; }
+  function installed(name) {
+    const q = `"${name.replace(/"/g, '')}"`;
+    return ['monospace', 'serif'].some(base => Math.abs(width(`${q}, ${base}`) - width(base)) > 0.5);
+  }
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  async function handle(file) {
+    const card = el('div', 'card');
+    const row = el('div', 'row'); const head = el('div');
+    head.append(el('h2', null, file.name)); const meta = el('div', 'meta', '변환하는 중…'); head.append(meta);
+    row.append(head); card.append(row); results.prepend(card);
+    const fail = (text) => { meta.textContent = '변환하지 못했습니다'; card.append(el('p', 'msg bad', text)); };
+
+    if (/\.hwpx$/i.test(file.name)) return fail('.hwpx 파일은 아직 지원하지 않습니다. 한글에서 [다른 이름으로 저장] → 한글 문서(*.hwp)로 저장한 뒤 다시 넣어 주세요.');
+    if (!/\.hwp$/i.test(file.name)) return fail('한글 문서(.hwp)만 변환할 수 있습니다.');
+
+    let out;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      out = Hwp2Docx.hwpToDocx(bytes, { keepPageBreaks: $('keepPages').checked, keepLineBreaks: $('keepLines').checked, target: $('notWord').checked ? 'libreoffice' : 'word' });
+    } catch (e) {
+      console.error(e);
+      return fail('이 파일은 읽지 못했습니다. 암호가 걸렸거나 배포용 문서이거나, 아주 오래된 형식(한글 97 이전)일 수 있습니다. (' + (e && e.message ? e.message : e) + ')');
+    }
+
+    const { docx, report } = out;
+    const name = file.name.replace(/\.hwp$/i, '') + '.docx';
+    const url = URL.createObjectURL(new Blob([docx], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+    const a = el('a', 'btn', '워드 파일 받기'); a.href = url; a.download = name; row.append(a);
+    meta.textContent = `문단 ${report.stats.paragraphs}개 · 표 ${report.stats.tables}개 → ${name}`;
+
+    // 글꼴
+    const fontBox = el('div'); const missing = [], unknown = [];
+    for (const f of report.fonts) {
+      const has = installed(f);
+      if (!has) missing.push(f); else if (!(f in KNOWN)) unknown.push(f);
+      fontBox.append(el('span', 'tag ' + (has ? 'ok' : 'bad'), f + (has ? '' : ' · 이 컴퓨터에 없음')));
+    }
+    card.append(fontBox);
+    if (missing.length) card.append(el('p', 'msg bad', `${missing.join(', ')} 글꼴이 이 컴퓨터에 없습니다. 워드가 다른 글꼴로 바꿔 보여 주기 때문에 줄과 쪽이 달라집니다. 글꼴을 설치한 뒤 워드 파일을 열어 주세요.`));
+    if (unknown.length && !$('notWord').checked) card.append(el('p', 'msg warn', `${unknown.join(', ')} 글꼴은 띄어쓰기 폭을 재 둔 값이 없어 그 부분 보정을 하지 않았습니다. 긴 문단에서 줄이 넘어가는 자리가 한글과 조금 다를 수 있습니다.`));
+
+    // 근사 처리 항목
+    if (report.approximations.length) {
+      const d = el('details'); d.append(el('summary', null, `그대로 옮기지 못해 비슷하게 맞춘 곳 ${report.approximations.length}가지`));
+      const ul = el('ul'); for (const x of report.approximations) ul.append(el('li', null, `${x.msg} (${x.count}곳)`));
+      d.append(ul); card.append(d);
+    }
+  }
+
+  const run = (files) => { for (const f of files) handle(f); };
+  $('pick').addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { run(input.files); input.value = ''; });
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => run(e.dataTransfer.files));
+  // 창 아무 데나 떨어뜨려도 브라우저가 파일을 열어 버리지 않게
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+})();
+</script>
+</body>
+</html>
