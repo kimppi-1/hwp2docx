@@ -59,9 +59,23 @@
 - 워드에서 바로 인쇄하면 글자가 한글보다 진하게 나올 수 있습니다. PDF로 저장해 인쇄하면 같습니다.
 - 다른 워드 버전, 한컴오피스·구글 문서·LibreOffice에서는 확인하지 않았습니다.
 
+## PDF → 한글 (.pdf → .hwpx)
+
+PDF 안 글자의 자리·크기·글꼴·색·굵기를 읽어 문단을 되살리고, 쪽 크기·여백·줄 간격·정렬·들여쓰기·쪽 나눔을 맞춰 한글 파일로 씁니다. 워드(.docx)로도 바꿀 수 있습니다. PDF 읽기에는 [pdf.js](https://github.com/mozilla/pdf.js)(Apache-2.0)를 씁니다 (`vendor/pdfjs/`).
+
+- 한글에서 저장한 PDF: 줄 끝 빈칸까지 PDF 안에 남아 있어, 문단 글과 글자색·굵기가 원본과 같게 되살아납니다 (PDF와 같은 때 저장한 한글 원본이 있는 문서 2개에서 문단 407개 모두 일치).
+- 양쪽 정렬 문서는 오른쪽 끝까지 찬 줄을 이어지는 줄로, 아닌 문서는 다음 줄 첫 낱말이 앞 줄에 들어갈 수 있었는지로 문단을 나눕니다.
+- 표: PDF에 그려진 표 선과 칸 배경으로 칸을 나누고(합친 칸 포함), 칸마다 테두리·배경색·안 여백·세로 정렬과 글을 되살립니다. 선 없이 배경만 칠한 상자도 한 칸짜리 표로 옮깁니다. 쪽을 넘어 이어지는 표는 하나로 잇고, 다음 쪽에 되풀이된 머리 줄은 한 번만 둡니다.
+- 그림·도형·밑줄은 아직 옮기지 않습니다. 배경을 옮기지 못한 흰 글씨는 검정으로 바꿉니다. 스캔한 PDF(글자 없는 그림)는 바꿀 수 없습니다.
+
+```
+node cli-pdf.mjs 문서.pdf          # 문서.hwpx
+node cli-pdf.mjs 문서.pdf 이름 --docx
+```
+
 ## 다른 앱에서 쓰기
 
-`hwp2docx.bundle.js` 한 파일만 넣으면 브라우저·Electron 화면에서 전역 `Hwp2Docx`로 쓸 수 있습니다. 모든 변환은 그 컴퓨터 안에서만 이루어집니다.
+`hwp2docx.bundle.js` 한 파일만 넣으면 (PDF를 바꾸려면 `vendor/pdfjs/`도 함께) 브라우저·Electron 화면에서 전역 `Hwp2Docx`로 쓸 수 있습니다. 모든 변환은 그 컴퓨터 안에서만 이루어집니다.
 
 | 함수 | 넣는 것 | 돌려주는 것 |
 |---|---|---|
@@ -70,6 +84,7 @@
 | `templateFromHwp(bytes)` | 서식 견본 .hwp | 서식 틀 객체 (JSON으로 저장 가능) |
 | `styledToHwpx(text, template?)` / `styledToDocx(text, template?)` | 색 표시 글 | .hwpx / .docx 내용 (Uint8Array) |
 | `hwpToStyled(bytes)` | .hwp 내용 | 색 표시 글 |
+| `await pdfToHwpx(bytes, pdfjs, { cMapUrl })` / `await pdfToDocx(…)` | .pdf 내용, pdf.js 모듈 | `{ hwpx }` / `{ docx }` 와 `report` |
 
 `report`에는 `stats`(문단·표 수), `fonts`(쓰인 글꼴), `approximations`(비슷하게 맞춘 곳 `{ msg, count }`)가 들어 있습니다.
 

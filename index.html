@@ -132,9 +132,10 @@
       <div class="routes">
         <span class="from">한글 .hwp</span><span class="arrow">→</span><span class="to">워드 .docx</span>
         <span class="from">워드 .docx</span><span class="arrow">→</span><span class="to">한글 .hwpx</span>
+        <span class="from">PDF .pdf</span><span class="arrow">→</span><span class="to">한글 .hwpx</span>
       </div>
       <button type="button" class="pick" id="pick">파일 고르기</button>
-      <input type="file" id="file" accept=".hwp,.docx" multiple hidden>
+      <input type="file" id="file" accept=".hwp,.docx,.pdf" multiple hidden>
       <span class="private">여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.</span>
     </div>
   </section>
@@ -146,6 +147,11 @@
     <label><input type="checkbox" id="notWord"><span>MS 워드가 아닌 프로그램에서 열 파일<small>한컴오피스, 구글 문서, LibreOffice 등</small></span></label>
   </details>
 
+  <details class="settings">
+    <summary>PDF 설정</summary>
+    <label><input type="checkbox" id="pdfWord"><span>PDF를 한글 대신 워드(.docx)로 바꾸기<small>글꼴·크기·색·줄 간격·여백은 같은 방법으로 옮깁니다.</small></span></label>
+  </details>
+
   <div id="results" aria-live="polite"></div>
 
   <section class="guide">
@@ -155,6 +161,7 @@
         <li>문서에 쓰인 글꼴이 바꾼 파일을 여는 컴퓨터에도 있어야 합니다. 바꾼 뒤 이 컴퓨터에 없는 글꼴을 붉게 표시합니다.</li>
         <li>워드 파일은 MS 워드 기준으로 맞췄습니다. 다른 프로그램에서는 띄어쓰기 폭과 표 높이가 조금 다릅니다.</li>
         <li>한글 파일은 .hwpx로 만듭니다. 한글 2014 이후에서 열리고, [다른 이름으로 저장]으로 .hwp로도 바꿀 수 있습니다.</li>
+        <li>PDF는 글자의 자리·크기·색·굵기를 읽어 문단과 여백을 되살립니다. 한글이나 워드에서 저장한 PDF일수록 원래 모양에 가깝습니다.</li>
         <li>워드에서 바로 인쇄하면 글자가 진하게 나올 수 있습니다. PDF로 저장한 뒤 인쇄하면 한글과 같습니다.</li>
       </ul>
     </div>
@@ -165,6 +172,7 @@
         <li>워드의 머리말과 꼬리말</li>
         <li>.hwpx 파일을 워드로 바꾸기 (한글에서 .hwp로 저장한 뒤 넣어 주세요)</li>
         <li>암호가 걸린 파일, 예전 워드 형식(.doc)</li>
+        <li>PDF의 그림·도형, 스캔한 PDF (표와 색 상자는 옮깁니다)</li>
       </ul>
     </div>
   </section>
@@ -201,6 +209,16 @@
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
+  // pdf.js는 PDF를 처음 넣을 때만 불러온다 (2MB 남짓)
+  let pdfjsPromise = null;
+  function loadPdfjs() {
+    if (!pdfjsPromise) pdfjsPromise = import(new URL('vendor/pdfjs/pdf.min.mjs', location.href).href).then(m => {
+      m.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
+      return m;
+    });
+    return pdfjsPromise;
+  }
+
   async function handle(file) {
     const row = el('div', 'row');
     const head = el('div'); head.append(el('div', 'name', file.name));
@@ -209,30 +227,41 @@
     const fail = (text) => { row.classList.add('failed'); meta.textContent = '바꾸지 못했습니다'; const x = el('div', 'extra'); x.append(el('p', 'note', text)); row.append(x); };
 
     if (/\.hwpx$/i.test(file.name)) return fail('.hwpx 파일은 아직 워드로 바꾸지 못합니다. 한글에서 [다른 이름으로 저장] → 한글 문서(*.hwp)로 저장한 뒤 다시 넣어 주세요.');
-    const isHwp = /\.hwp$/i.test(file.name), isDocx = /\.docx$/i.test(file.name);
-    if (!isHwp && !isDocx) return fail(/\.doc$/i.test(file.name) ? '예전 워드 형식(.doc)은 바꾸지 못합니다. 워드에서 .docx로 저장한 뒤 다시 넣어 주세요.' : '한글 문서(.hwp)나 워드 문서(.docx)만 바꿀 수 있습니다.');
+    const isHwp = /\.hwp$/i.test(file.name), isDocx = /\.docx$/i.test(file.name), isPdf = /\.pdf$/i.test(file.name);
+    if (!isHwp && !isDocx && !isPdf) return fail(/\.doc$/i.test(file.name) ? '예전 워드 형식(.doc)은 바꾸지 못합니다. 워드에서 .docx로 저장한 뒤 다시 넣어 주세요.' : '한글 문서(.hwp), 워드 문서(.docx), PDF만 바꿀 수 있습니다.');
+    const pdfToWord = isPdf && $('pdfWord').checked;
+    const toWord = isHwp || pdfToWord;
 
     let out;
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (isHwp) { const r = Hwp2Docx.hwpToDocx(bytes, { keepPageBreaks: $('keepPages').checked, keepLineBreaks: $('keepLines').checked, target: $('notWord').checked ? 'libreoffice' : 'word' }); out = { data: r.docx, report: r.report }; }
+      else if (isPdf) {
+        const pdfjs = await loadPdfjs();
+        const o = { cMapUrl: new URL('vendor/pdfjs/cmaps/', location.href).href, target: $('notWord').checked ? 'libreoffice' : 'word' };
+        const r = pdfToWord ? await Hwp2Docx.pdfToDocx(bytes, pdfjs, o) : await Hwp2Docx.pdfToHwpx(bytes, pdfjs, o);
+        out = { data: r.docx ?? r.hwpx, report: r.report };
+      }
       else { const r = Hwp2Docx.docxToHwpx(bytes); out = { data: r.hwpx, report: r.report }; }
     } catch (e) {
       console.error(e);
       const why = e && e.message ? e.message : String(e);
+      if (isPdf) return fail(e && e.code === 'NO_TEXT' ? '글자를 읽을 수 없는 PDF입니다. 스캔했거나 그림으로 만든 PDF는 바꾸지 못합니다.'
+        : e && e.code === 'PASSWORD' ? '암호가 걸린 PDF입니다. 암호를 푼 PDF로 다시 저장한 뒤 넣어 주세요.'
+        : `이 PDF는 읽지 못했습니다. 손상된 파일일 수 있습니다. (${why})`);
       return fail(isHwp
         ? `이 한글 파일은 읽지 못했습니다. 암호가 걸렸거나 배포용 문서이거나, 한글 97 이전 형식일 수 있습니다. (${why})`
         : `이 워드 파일은 읽지 못했습니다. 암호가 걸렸거나 손상된 파일일 수 있습니다. (${why})`);
     }
 
     const { data, report } = out;
-    const name = file.name.replace(/\.(hwp|docx)$/i, '') + (isHwp ? '.docx' : '.hwpx');
-    const a = el('a', 'get', isHwp ? '워드 파일 받기' : '한글 파일 받기');
-    a.href = URL.createObjectURL(new Blob([data], { type: isHwp ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/hwp+zip' }));
+    const name = file.name.replace(/\.(hwp|docx|pdf)$/i, '') + (toWord ? '.docx' : '.hwpx');
+    const a = el('a', 'get', toWord ? '워드 파일 받기' : '한글 파일 받기');
+    a.href = URL.createObjectURL(new Blob([data], { type: toWord ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/hwp+zip' }));
     a.download = name;
     row.append(a);
     meta.innerHTML = '';
-    meta.append(el('b', null, isHwp ? '한글 → 워드' : '워드 → 한글'), document.createTextNode(`  ${name}, 문단 ${report.stats.paragraphs}개` + (isHwp ? `, 표 ${report.stats.tables}개` : '')));
+    meta.append(el('b', null, isPdf ? (toWord ? 'PDF → 워드' : 'PDF → 한글') : isHwp ? '한글 → 워드' : '워드 → 한글'), document.createTextNode(`  ${name}, ` + (isPdf ? `${report.stats.pages}쪽, ` : '') + `문단 ${report.stats.paragraphs}개` + (isHwp ? `, 표 ${report.stats.tables}개` : '')));
 
     const extra = el('div', 'extra');
     const fonts = el('div', 'fonts'); const missing = [], unknown = [];
@@ -243,7 +272,7 @@
     }
     extra.append(fonts);
     if (missing.length) extra.append(el('p', 'note', `${missing.join(', ')} 글꼴이 이 컴퓨터에 없습니다. 다른 글꼴로 바뀌어 보이면 줄과 쪽이 달라지니, 글꼴을 설치한 뒤 열어 주세요.`));
-    if (unknown.length) extra.append(el('p', 'note', `${unknown.join(', ')} 글꼴은 띄어쓰기 폭을 재 둔 값이 없어 그 부분은 맞추지 않았습니다. 긴 문단에서 줄이 바뀌는 자리가 조금 다를 수 있습니다.`));
+    if (unknown.length && !isPdf) extra.append(el('p', 'note', `${unknown.join(', ')} 글꼴은 띄어쓰기 폭을 재 둔 값이 없어 그 부분은 맞추지 않았습니다. 긴 문단에서 줄이 바뀌는 자리가 조금 다를 수 있습니다.`));
     if (report.approximations.length) {
       const d = el('details'); d.append(el('summary', null, `그대로 옮기지 못해 비슷하게 맞춘 곳 ${report.approximations.length}가지`));
       const ul = el('ul'); for (const x of report.approximations) ul.append(el('li', null, `${x.msg} (${x.count}곳)`));

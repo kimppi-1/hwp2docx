@@ -1,19 +1,21 @@
 {
   "name": "hwp2docx",
-  "version": "0.4.0",
-  "description": "한글(HWP) ↔ 워드(DOCX) 서식 그대로 변환",
+  "version": "0.5.0",
+  "description": "한글(HWP) ↔ 워드(DOCX), PDF → 한글 서식 그대로 변환",
   "type": "module",
   "bin": {
     "hwp2docx": "./cli.mjs",
     "docx2hwpx": "./cli-docx.mjs",
-    "styled2hwp": "cli-styled.mjs"
+    "styled2hwp": "cli-styled.mjs",
+    "pdf2hwpx": "cli-pdf.mjs"
   },
   "scripts": {
     "build": "esbuild web-entry.mjs --bundle --format=iife --global-name=Hwp2Docx --minify --platform=browser --outfile=hwp2docx.bundle.js"
   },
   "dependencies": {
     "cfb": "^1.2.2",
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

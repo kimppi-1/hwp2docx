@@ -103,7 +103,8 @@ export function buildHwpx(model, opts = {}) {
     const la = r.fonts?.ascii || r.fonts?.hAnsi || ea;
     const sizePt = (r.sz ?? 20) / 2;
     let want, extra = r.spacing ? (r.spacing / 20) : 0;   // pt
-    if (model.balanceWidth && kind === 'ea') { want = (HANGUL_ADVANCE[ea] ?? 1) / 2; extra *= 2; }
+    if (r.spaceEm != null) want = r.spaceEm;   // 글꼴의 빈칸 폭을 직접 알 때 (PDF에서 읽음)
+    else if (model.balanceWidth && kind === 'ea') { want = (HANGUL_ADVANCE[ea] ?? 1) / 2; extra *= 2; }
     else {
       want = SPACE_ADVANCE[la] ?? SPACE_ADVANCE_GUESS[la];
       if (want == null) { note(`글꼴 '${la}'의 띄어쓰기 폭을 몰라 빈칸 폭은 한글 기본값으로 둠`); return null; }
@@ -194,7 +195,7 @@ export function buildHwpx(model, opts = {}) {
       prev: H(env.before ?? pr.spacing?.before ?? 0), next: H(env.after ?? pr.spacing?.after ?? 0),
       lineType: ls.type, lineValue: ls.value,
       tab: tabPr(pr.tabs, b.numbered || (hasTab && first < 0)),
-      keepWord: true, /* 실측: 워드는 한글을 글자 단위로 끊는다. 한글은 breakNonLatinWord=KEEP_WORD일 때 글자 단위(BREAK_WORD는 어절 단위) */ widow: !!pr.widowControl, keepNext: !!pr.keepNext, keepLines: !!pr.keepLines,
+      keepWord: !pr.hwpWordBreak, /* hwpWordBreak: 한글 '어절' 단위(BREAK_WORD)로 끊을 문단. */ /* 실측: 워드는 한글을 글자 단위로 끊는다. 한글은 breakNonLatinWord=KEEP_WORD일 때 글자 단위(BREAK_WORD는 어절 단위) */ widow: !!pr.widowControl, keepNext: !!pr.keepNext, keepLines: !!pr.keepLines,
       pageBreakBefore: !!pr.pageBreakBefore, autoEng: false, autoNum: false,   // 워드는 한글 문서에서 한글–영문·숫자 사이 자동 간격을 실제로 넣지 않는다(실측: 한글은 넣어서 줄이 밀림)
       border, bo, connect: hasBorder,
     };
@@ -365,7 +366,7 @@ export function buildHwpx(model, opts = {}) {
       for (let i = 1; i < n; i++) if (blocks[i].k === 'p' && blocks[i - 1].k === 'p') { bef[i] = Math.max(bef[i], aft[i - 1]); aft[i - 1] = 0; }
     }
     // 한글 문단 테두리·배경은 문단 위·아래 간격까지 감싼다(워드는 글자 부분만) → 상자 바깥 간격은 이웃 문단(또는 표)으로 넘긴다
-    const tBef = new Array(n).fill(0), tAft = new Array(n).fill(0);
+    const tBef = blocks.map(b => (b.k === 'tbl' ? b.before || 0 : 0)), tAft = new Array(n).fill(0);   // 표 앞 간격(표에 직접 준 값)
     const boxed = b => b?.k === 'p' && (!!b.ppr.shade || Object.values(b.ppr.borders || {}).some(x => x && x.type && x.type !== 'none'));
     for (let i = 0; i < n; i++) {
       if (!boxed(blocks[i])) continue;
@@ -413,14 +414,14 @@ export function buildHwpx(model, opts = {}) {
       cellDeficit = 0;
       if (n && blocks[n - 1].k === 'p') {
         const { L, size } = lastLine(blocks[n - 1]);
-        cellDeficit = Math.max(0, aft[n - 1] + Math.round((L - size) * 20) - lastS);
+        cellDeficit = opts.native ? 0 : Math.max(0, aft[n - 1] + Math.round((L - size) * 20) - lastS);   // 한글 값 그대로 모드에서는 보정하지 않는다
         aft[n - 1] = 0;
       }
     }
     let out = '';
     blocks.forEach((b, i) => {
       const lead = i === 0 ? env.lead : undefined;
-      if (b.k === 'tbl') { out += tableXml(b, { lead, markR: blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i] }); return; }
+      if (b.k === 'tbl') { out += tableXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
       out += paraXml(b, { lead, before: bef[i], after: aft[i] });
     });
     return out;
