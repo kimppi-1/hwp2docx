@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>한글 ↔ 워드 변환기</title>
-<meta name="description" content="한글 파일은 워드로, 워드 파일은 한글로. 글꼴, 자간, 줄 간격, 여백, 표 모양을 그대로 옮깁니다. 파일은 브라우저 밖으로 나가지 않습니다.">
+<title>한글 ↔ 워드 변환기 — HWP to DOCX / DOCX to HWPX / PDF to HWPX</title>
+<meta name="description" content="한글 파일은 워드로, 워드 파일은 한글로, PDF는 한글로. 글꼴, 자간, 줄 간격, 여백, 표 모양을 그대로 옮깁니다. 파일은 브라우저 밖으로 나가지 않습니다.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
@@ -21,7 +21,11 @@
     --ok: #23784a;
     --serif: "Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", serif;
     --sans: "IBM Plex Sans KR", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    --wb: keep-all;
   }
+  /* 중국어·일본어는 낱말 사이 띄어쓰기가 없어 어디서나 줄을 바꿀 수 있어야 한다 */
+  html:lang(zh) { --serif: "Noto Serif SC", "Songti SC", "SimSun", serif; --sans: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; --wb: normal; }
+  html:lang(ja) { --serif: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif; --sans: "Hiragino Sans", "Yu Gothic UI", "Meiryo", "Noto Sans JP", system-ui, sans-serif; --wb: normal; }
   @media (prefers-color-scheme: dark) {
     :root { --paper: #1d222c; --desk: #151920; --ink: #e8ebf0; --ink-2: #a3acba; --rule: #343b48; --grid: #2a303b; --proof: #ef6f63; --proof-soft: #3a2220; --ok: #6fd39b; }
   }
@@ -33,14 +37,19 @@
 
   .wrap { max-width: 760px; margin: 0 auto; padding: 72px 24px 64px; }
 
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+  header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 28px; }
+  header .side { display: flex; align-items: center; gap: 18px; }
+  .langs { display: flex; gap: 4px; }
+  .langs button { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; font: 600 14px/1 var(--sans); color: var(--ink-2); background: var(--paper); border: 1.5px solid var(--rule); cursor: pointer; }
+  .langs button:hover { color: var(--ink); border-color: var(--ink); }
+  .langs button[aria-pressed="true"] { color: var(--paper); background: var(--ink); border-color: var(--ink); }
   .mark { font: 700 15px/1 var(--serif); letter-spacing: 0.02em; }
   .mark span { display: inline-block; width: 1.4em; text-align: center; }
   header nav a { font-size: 14px; color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); padding-bottom: 1px; }
   header nav a:hover { color: var(--ink); border-color: var(--ink); }
 
-  h1 { font: 700 clamp(30px, 5.2vw, 44px)/1.32 var(--serif); letter-spacing: -0.015em; margin: 0 0 14px; word-break: keep-all; }
-  .lead { font-size: 17px; color: var(--ink-2); max-width: 34em; margin: 0 0 40px; word-break: keep-all; }
+  h1 { font: 700 clamp(30px, 5.2vw, 44px)/1.32 var(--serif); letter-spacing: -0.015em; margin: 0 0 14px; word-break: var(--wb); }
+  .lead { font-size: 17px; color: var(--ink-2); max-width: 34em; margin: 0 0 40px; word-break: var(--wb); }
 
   /* 원고지 한 장 */
   .sheet {
@@ -57,7 +66,7 @@
   .sheet.over { --grid: var(--proof-soft); }
   .sheet.over::before { border-color: var(--proof); }
   .sheet-inner { background: var(--paper); padding: 34px 32px 30px; }
-  .sheet h2 { font: 700 21px/1.4 var(--serif); margin: 0 0 18px; word-break: keep-all; }
+  .sheet h2 { font: 700 21px/1.4 var(--serif); margin: 0 0 18px; word-break: var(--wb); }
   .routes { display: grid; grid-template-columns: auto auto 1fr; gap: 6px 14px; align-items: baseline; margin: 0 0 26px; font-size: 15px; }
   .routes .from { font-weight: 600; }
   .routes .arrow { color: var(--proof); font-family: var(--serif); }
@@ -65,7 +74,7 @@
   .pick { font: 600 15px/1 var(--sans); color: var(--paper); background: var(--ink); border: 0; padding: 13px 22px; cursor: pointer; }
   .pick:hover { background: #000; }
   @media (prefers-color-scheme: dark) { .pick:hover { background: #fff; } }
-  .private { display: block; margin-top: 14px; font-size: 13px; color: var(--ink-2); max-width: 36em; word-break: keep-all; }
+  .private { display: block; margin-top: 14px; font-size: 13px; color: var(--ink-2); max-width: 36em; word-break: var(--wb); }
 
   /* 설정 */
   details.settings { margin: 22px 2px 0; font-size: 14px; color: var(--ink-2); }
@@ -101,7 +110,7 @@
   .guide { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 64px; font-size: 14.5px; }
   .guide h3 { font: 700 16px/1.4 var(--serif); margin: 0 0 10px; }
   .guide ul { margin: 0; padding: 0; list-style: none; color: var(--ink-2); }
-  .guide li { padding: 7px 0; border-top: 1px solid var(--rule); word-break: keep-all; }
+  .guide li { padding: 7px 0; border-top: 1px solid var(--rule); word-break: var(--wb); }
 
   footer { margin-top: 56px; font-size: 13px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 6px 20px; }
 
@@ -119,87 +128,334 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="mark">한글<span>↔</span>워드</div>
-    <nav id="src"></nav>
+    <div class="mark" data-i18n-html="mark">한글<span>↔</span>워드</div>
+    <div class="side">
+      <nav id="src"></nav>
+      <div class="langs" role="group" aria-label="Language">
+        <button type="button" data-lang="ko" lang="ko" title="한국어" aria-label="한국어">가</button>
+        <button type="button" data-lang="en" lang="en" title="English" aria-label="English">A</button>
+        <button type="button" data-lang="zh" lang="zh" title="中文" aria-label="中文">中</button>
+        <button type="button" data-lang="ja" lang="ja" title="日本語" aria-label="日本語">あ</button>
+      </div>
+    </div>
   </header>
 
-  <h1>한글 파일은 워드로,<br>워드 파일은 한글로.</h1>
-  <p class="lead">글꼴, 자간, 줄 간격, 여백, 표 모양까지 그대로 옮깁니다. 바꾼 뒤에 글자가 다른 줄로 밀리지 않도록, 두 프로그램이 실제로 글자를 놓는 자리를 재서 맞췄습니다.</p>
+  <h1 data-i18n-html="h1">한글 파일은 워드로,<br>워드 파일은 한글로.</h1>
+  <p class="lead" data-i18n="lead">글꼴, 자간, 줄 간격, 여백, 표 모양까지 그대로 옮깁니다. 바꾼 뒤에 글자가 다른 줄로 밀리지 않도록, 두 프로그램이 실제로 글자를 놓는 자리를 재서 맞췄습니다.</p>
 
-  <section class="sheet" id="drop" aria-label="파일 놓는 곳">
+  <section class="sheet" id="drop" aria-label="파일 놓는 곳" data-i18n-aria="dropAria">
     <div class="sheet-inner">
-      <h2>바꿀 파일을 여기에 놓으세요</h2>
+      <h2 data-i18n="dropH2">바꿀 파일을 여기에 놓으세요</h2>
       <div class="routes">
-        <span class="from">한글 .hwp</span><span class="arrow">→</span><span class="to">워드 .docx</span>
-        <span class="from">워드 .docx</span><span class="arrow">→</span><span class="to">한글 .hwpx</span>
-        <span class="from">PDF .pdf</span><span class="arrow">→</span><span class="to">한글 .hwpx</span>
+        <span class="from" data-i18n="hwpFile">한글 .hwp</span><span class="arrow">→</span><span class="to" data-i18n="docxFile">워드 .docx</span>
+        <span class="from" data-i18n="docxFile">워드 .docx</span><span class="arrow">→</span><span class="to" data-i18n="hwpxFile">한글 .hwpx</span>
+        <span class="from">PDF .pdf</span><span class="arrow">→</span><span class="to" data-i18n="hwpxFile">한글 .hwpx</span>
       </div>
-      <button type="button" class="pick" id="pick">파일 고르기</button>
+      <button type="button" class="pick" id="pick" data-i18n="pick">파일 고르기</button>
       <input type="file" id="file" accept=".hwp,.docx,.pdf" multiple hidden>
-      <span class="private">여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.</span>
+      <span class="private" data-i18n="private">여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.</span>
     </div>
   </section>
 
   <details class="settings">
-    <summary>한글 → 워드 설정</summary>
-    <label><input type="checkbox" id="keepPages" checked><span>쪽이 넘어가는 자리를 한글과 똑같이 고정<small>글을 많이 고칠 문서라면 끄세요.</small></span></label>
-    <label><input type="checkbox" id="keepLines"><span>줄이 바뀌는 자리도 한글과 똑같이 고정<small>모양은 가장 비슷하지만, 나중에 글을 고치기 불편해집니다.</small></span></label>
-    <label><input type="checkbox" id="notWord"><span>MS 워드가 아닌 프로그램에서 열 파일<small>한컴오피스, 구글 문서, LibreOffice 등</small></span></label>
+    <summary data-i18n="set1">한글 → 워드 설정</summary>
+    <label><input type="checkbox" id="keepPages" checked><span><span data-i18n="keepPages">쪽이 넘어가는 자리를 한글과 똑같이 고정</span><small data-i18n="keepPagesS">글을 많이 고칠 문서라면 끄세요.</small></span></label>
+    <label><input type="checkbox" id="keepLines"><span><span data-i18n="keepLines">줄이 바뀌는 자리도 한글과 똑같이 고정</span><small data-i18n="keepLinesS">모양은 가장 비슷하지만, 나중에 글을 고치기 불편해집니다.</small></span></label>
+    <label><input type="checkbox" id="notWord"><span><span data-i18n="notWord">MS 워드가 아닌 프로그램에서 열 파일</span><small data-i18n="notWordS">한컴오피스, 구글 문서, LibreOffice 등</small></span></label>
   </details>
 
   <details class="settings">
-    <summary>PDF 설정</summary>
-    <label><input type="checkbox" id="pdfWord"><span>PDF를 한글 대신 워드(.docx)로 바꾸기<small>글꼴·크기·색·줄 간격·여백은 같은 방법으로 옮깁니다.</small></span></label>
+    <summary data-i18n="set2">PDF 설정</summary>
+    <label><input type="checkbox" id="pdfWord"><span><span data-i18n="pdfWord">PDF를 한글 대신 워드(.docx)로 바꾸기</span><small data-i18n="pdfWordS">글꼴·크기·색·줄 간격·여백은 같은 방법으로 옮깁니다.</small></span></label>
   </details>
 
   <div id="results" aria-live="polite"></div>
 
   <section class="guide">
     <div>
-      <h3>똑같이 보이려면</h3>
+      <h3 data-i18n="g1">똑같이 보이려면</h3>
       <ul>
-        <li>문서에 쓰인 글꼴이 바꾼 파일을 여는 컴퓨터에도 있어야 합니다. 바꾼 뒤 이 컴퓨터에 없는 글꼴을 붉게 표시합니다.</li>
-        <li>워드 파일은 MS 워드 기준으로 맞췄습니다. 다른 프로그램에서는 띄어쓰기 폭과 표 높이가 조금 다릅니다.</li>
-        <li>한글 파일은 .hwpx로 만듭니다. 한글 2014 이후에서 열리고, [다른 이름으로 저장]으로 .hwp로도 바꿀 수 있습니다.</li>
-        <li>PDF는 글자의 자리·크기·색·굵기를 읽어 문단과 여백을 되살립니다. 한글이나 워드에서 저장한 PDF일수록 원래 모양에 가깝습니다.</li>
-        <li>워드에서 바로 인쇄하면 글자가 진하게 나올 수 있습니다. PDF로 저장한 뒤 인쇄하면 한글과 같습니다.</li>
+        <li data-i18n="g1a">문서에 쓰인 글꼴이 바꾼 파일을 여는 컴퓨터에도 있어야 합니다. 바꾼 뒤 이 컴퓨터에 없는 글꼴을 붉게 표시합니다.</li>
+        <li data-i18n="g1b">워드 파일은 MS 워드 기준으로 맞췄습니다. 다른 프로그램에서는 띄어쓰기 폭과 표 높이가 조금 다릅니다.</li>
+        <li data-i18n="g1c">한글 파일은 .hwpx로 만듭니다. 한글 2014 이후에서 열리고, [다른 이름으로 저장]으로 .hwp로도 바꿀 수 있습니다.</li>
+        <li data-i18n="g1d">PDF는 글자의 자리·크기·색·굵기를 읽어 문단과 여백을 되살립니다. 한글이나 워드에서 저장한 PDF일수록 원래 모양에 가깝습니다.</li>
+        <li data-i18n="g1e">워드에서 바로 인쇄하면 글자가 진하게 나올 수 있습니다. PDF로 저장한 뒤 인쇄하면 한글과 같습니다.</li>
       </ul>
     </div>
     <div>
-      <h3>아직 옮기지 못하는 것</h3>
+      <h3 data-i18n="g2">아직 옮기지 못하는 것</h3>
       <ul>
-        <li>그림, 그리기 개체, 글상자, 각주, 수식</li>
-        <li>워드의 머리말과 꼬리말</li>
-        <li>.hwpx 파일을 워드로 바꾸기 (한글에서 .hwp로 저장한 뒤 넣어 주세요)</li>
-        <li>암호가 걸린 파일, 예전 워드 형식(.doc)</li>
-        <li>PDF의 그림·도형, 스캔한 PDF (표와 색 상자는 옮깁니다)</li>
+        <li data-i18n="g2a">그림, 그리기 개체, 글상자, 각주, 수식</li>
+        <li data-i18n="g2b">워드의 머리말과 꼬리말</li>
+        <li data-i18n="g2c">.hwpx 파일을 워드로 바꾸기 (한글에서 .hwp로 저장한 뒤 넣어 주세요)</li>
+        <li data-i18n="g2d">암호가 걸린 파일, 예전 워드 형식(.doc)</li>
+        <li data-i18n="g2e">PDF의 그림·도형, 스캔한 PDF (표와 색 상자는 옮깁니다)</li>
       </ul>
     </div>
   </section>
 
   <footer>
-    <span>누구나 자유롭게 쓰고 고칠 수 있습니다 (MIT 라이선스)</span>
+    <span data-i18n="license">누구나 자유롭게 쓰고 고칠 수 있습니다 (MIT 라이선스)</span>
     <span id="src2"></span>
   </footer>
 </div>
 
 <script src="hwp2docx.bundle.js"></script>
 <script>
+// 화면 글 — 한국어(ko)·영어(en)·중국어(zh)·일본어(ja)
+window.I18N = {
+  ko: {
+    title: '한글 ↔ 워드 변환기 — HWP to DOCX / DOCX to HWPX / PDF to HWPX',
+    desc: '한글 파일은 워드로, 워드 파일은 한글로, PDF는 한글로. 글꼴, 자간, 줄 간격, 여백, 표 모양을 그대로 옮깁니다. 파일은 브라우저 밖으로 나가지 않습니다.',
+    mark: '한글<span>↔</span>워드',
+    h1: '한글 파일은 워드로,<br>워드 파일은 한글로.',
+    lead: '글꼴, 자간, 줄 간격, 여백, 표 모양까지 그대로 옮깁니다. 바꾼 뒤에 글자가 다른 줄로 밀리지 않도록, 두 프로그램이 실제로 글자를 놓는 자리를 재서 맞췄습니다.',
+    dropAria: '파일 놓는 곳', dropH2: '바꿀 파일을 여기에 놓으세요',
+    hwpFile: '한글 .hwp', docxFile: '워드 .docx', hwpxFile: '한글 .hwpx',
+    pick: '파일 고르기',
+    private: '여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.',
+    set1: '한글 → 워드 설정',
+    keepPages: '쪽이 넘어가는 자리를 한글과 똑같이 고정', keepPagesS: '글을 많이 고칠 문서라면 끄세요.',
+    keepLines: '줄이 바뀌는 자리도 한글과 똑같이 고정', keepLinesS: '모양은 가장 비슷하지만, 나중에 글을 고치기 불편해집니다.',
+    notWord: 'MS 워드가 아닌 프로그램에서 열 파일', notWordS: '한컴오피스, 구글 문서, LibreOffice 등',
+    set2: 'PDF 설정',
+    pdfWord: 'PDF를 한글 대신 워드(.docx)로 바꾸기', pdfWordS: '글꼴·크기·색·줄 간격·여백은 같은 방법으로 옮깁니다.',
+    g1: '똑같이 보이려면',
+    g1a: '문서에 쓰인 글꼴이 바꾼 파일을 여는 컴퓨터에도 있어야 합니다. 바꾼 뒤 이 컴퓨터에 없는 글꼴을 붉게 표시합니다.',
+    g1b: '워드 파일은 MS 워드 기준으로 맞췄습니다. 다른 프로그램에서는 띄어쓰기 폭과 표 높이가 조금 다릅니다.',
+    g1c: '한글 파일은 .hwpx로 만듭니다. 한글 2014 이후에서 열리고, [다른 이름으로 저장]으로 .hwp로도 바꿀 수 있습니다.',
+    g1d: 'PDF는 글자의 자리·크기·색·굵기를 읽어 문단과 여백을 되살립니다. 한글이나 워드에서 저장한 PDF일수록 원래 모양에 가깝습니다.',
+    g1e: '워드에서 바로 인쇄하면 글자가 진하게 나올 수 있습니다. PDF로 저장한 뒤 인쇄하면 한글과 같습니다.',
+    g2: '아직 옮기지 못하는 것',
+    g2a: '그림, 그리기 개체, 글상자, 각주, 수식', g2b: '워드의 머리말과 꼬리말',
+    g2c: '.hwpx 파일을 워드로 바꾸기 (한글에서 .hwp로 저장한 뒤 넣어 주세요)',
+    g2d: '암호가 걸린 파일, 예전 워드 형식(.doc)', g2e: 'PDF의 그림·도형, 스캔한 PDF (표와 색 상자는 옮깁니다)',
+    license: '누구나 자유롭게 쓰고 고칠 수 있습니다 (MIT 라이선스)',
+    srcLink: '소스와 업데이트 내역', issueLink: '잘 안 바뀌는 문서 알려 주기',
+    converting: '바꾸는 중', failed: '바꾸지 못했습니다',
+    errHwpx: '.hwpx 파일은 아직 워드로 바꾸지 못합니다. 한글에서 [다른 이름으로 저장] → 한글 문서(*.hwp)로 저장한 뒤 다시 넣어 주세요.',
+    errDoc: '예전 워드 형식(.doc)은 바꾸지 못합니다. 워드에서 .docx로 저장한 뒤 다시 넣어 주세요.',
+    errType: '한글 문서(.hwp), 워드 문서(.docx), PDF만 바꿀 수 있습니다.',
+    errNoText: '글자를 읽을 수 없는 PDF입니다. 스캔했거나 그림으로 만든 PDF는 바꾸지 못합니다.',
+    errPdfPw: '암호가 걸린 PDF입니다. 암호를 푼 PDF로 다시 저장한 뒤 넣어 주세요.',
+    errPdf: '이 PDF는 읽지 못했습니다. 손상된 파일일 수 있습니다. ({why})',
+    errHwp: '이 한글 파일은 읽지 못했습니다. 암호가 걸렸거나 배포용 문서이거나, 한글 97 이전 형식일 수 있습니다. ({why})',
+    errDocx: '이 워드 파일은 읽지 못했습니다. 암호가 걸렸거나 손상된 파일일 수 있습니다. ({why})',
+    getWord: '워드 파일 받기', getHwp: '한글 파일 받기',
+    rPdfWord: 'PDF → 워드', rPdfHwp: 'PDF → 한글', rHwpWord: '한글 → 워드', rWordHwp: '워드 → 한글',
+    pages: '{n}쪽', paras: '문단 {n}개', tables: '표 {n}개',
+    fontMissing: '{f} 없음',
+    missingNote: '{list} 글꼴이 이 컴퓨터에 없습니다. 다른 글꼴로 바뀌어 보이면 줄과 쪽이 달라지니, 글꼴을 설치한 뒤 열어 주세요.',
+    unknownNote: '{list} 글꼴은 띄어쓰기 폭을 재 둔 값이 없어 그 부분은 맞추지 않았습니다. 긴 문단에서 줄이 바뀌는 자리가 조금 다를 수 있습니다.',
+    approx: '그대로 옮기지 못해 비슷하게 맞춘 곳 {n}가지', approxItem: '{msg} ({c}곳)',
+  },
+  en: {
+    title: 'HWP ↔ Word converter — HWP to DOCX / DOCX to HWPX / PDF to HWPX',
+    desc: 'Convert Hangul (.hwp) files to Word, Word files to Hangul (.hwpx), and PDFs to Hangul, keeping fonts, spacing, margins and tables. Your files never leave the browser.',
+    mark: 'HWP<span>↔</span>Word',
+    h1: 'Hangul files to Word,<br>Word files to Hangul.',
+    lead: 'Fonts, letter spacing, line spacing, margins and table layout carry over as they are. We measured where each program actually places every character, so text does not slip onto another line after conversion. Hangul is the Korean word processor by Hancom (.hwp / .hwpx).',
+    dropAria: 'Drop files here', dropH2: 'Drop the files to convert here',
+    hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
+    pick: 'Choose files',
+    private: 'You can drop several files at once. Conversion happens entirely in this browser; your files are not uploaded anywhere.',
+    set1: 'Hangul → Word settings',
+    keepPages: 'Keep page breaks exactly where Hangul puts them', keepPagesS: 'Turn this off if you will edit the text a lot.',
+    keepLines: 'Also keep line breaks exactly where Hangul puts them', keepLinesS: 'Closest look, but harder to edit later.',
+    notWord: 'The file will be opened in a program other than MS Word', notWordS: 'Hancom Office, Google Docs, LibreOffice, etc.',
+    set2: 'PDF settings',
+    pdfWord: 'Convert PDFs to Word (.docx) instead of Hangul', pdfWordS: 'Fonts, sizes, colors, line spacing and margins carry over the same way.',
+    g1: 'To make it look the same',
+    g1a: 'The fonts used in the document must also be installed on the computer that opens the converted file. After conversion, fonts missing on this computer are marked in red.',
+    g1b: 'Word files are tuned for MS Word. In other programs, space widths and table heights differ slightly.',
+    g1c: 'Hangul files are saved as .hwpx. They open in Hangul 2014 or later and can be saved as .hwp with [Save As].',
+    g1d: 'For PDFs, the position, size, color and weight of each character are read to rebuild paragraphs and margins. PDFs saved from Hangul or Word come closest to the original.',
+    g1e: 'Printing straight from Word can make text look bolder. Save as PDF first and print that to match Hangul.',
+    g2: 'Not supported yet',
+    g2a: 'Images, drawing objects, text boxes, footnotes, equations', g2b: 'Headers and footers in Word files',
+    g2c: 'Converting .hwpx files to Word (save as .hwp in Hangul first)',
+    g2d: 'Password-protected files, the old Word format (.doc)', g2e: 'Images and shapes in PDFs, scanned PDFs (tables and colored boxes are carried over)',
+    license: 'Free for anyone to use and modify (MIT License)',
+    srcLink: 'Source and release notes', issueLink: 'Report a document that does not convert well',
+    converting: 'Converting…', failed: 'Could not convert',
+    errHwpx: '.hwpx files cannot be converted to Word yet. In Hangul, use [Save As] → Hangul document (*.hwp), then drop the file here again.',
+    errDoc: 'The old Word format (.doc) is not supported. Save it as .docx in Word, then drop it here again.',
+    errType: 'Only Hangul (.hwp), Word (.docx) and PDF files can be converted.',
+    errNoText: 'This PDF has no readable text. Scanned PDFs and PDFs made of images cannot be converted.',
+    errPdfPw: 'This PDF is password-protected. Save an unlocked copy, then drop it here again.',
+    errPdf: 'Could not read this PDF. The file may be damaged. ({why})',
+    errHwp: 'Could not read this Hangul file. It may be password-protected, a distribution-only document, or older than Hangul 97. ({why})',
+    errDocx: 'Could not read this Word file. It may be password-protected or damaged. ({why})',
+    getWord: 'Download Word file', getHwp: 'Download Hangul file',
+    rPdfWord: 'PDF → Word', rPdfHwp: 'PDF → Hangul', rHwpWord: 'Hangul → Word', rWordHwp: 'Word → Hangul',
+    pages: '{n} pages', paras: '{n} paragraphs', tables: '{n} tables',
+    fontMissing: '{f} missing',
+    missingNote: 'Not installed on this computer: {list}. If another font is substituted, lines and pages will shift, so install the font before opening the file.',
+    unknownNote: 'No measured space width for {list}, so spacing was not adjusted there. Line breaks in long paragraphs may differ slightly.',
+    approx: 'Approximated where an exact match was not possible ({n})', approxItem: '{msg} ({c})',
+  },
+  zh: {
+    title: 'HWP ↔ Word 转换器 — HWP 转 DOCX / DOCX 转 HWPX / PDF 转 HWPX',
+    desc: '将韩国 Hangul（.hwp）文件转换为 Word，将 Word 文件转换为 Hangul（.hwpx），将 PDF 转换为 Hangul，并保留字体、间距、页边距和表格。文件不会离开您的浏览器。',
+    mark: 'HWP<span>↔</span>Word',
+    h1: 'Hangul 文件转为 Word，<br>Word 文件转为 Hangul。',
+    lead: '字体、字间距、行距、页边距和表格样式都会原样保留。我们测量了两个程序实际摆放每个字的位置，转换后文字不会跑到别的行。Hangul 是韩国 Hancom 公司的文字处理软件（.hwp / .hwpx）。',
+    dropAria: '放置文件的区域', dropH2: '把要转换的文件拖到这里',
+    hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
+    pick: '选择文件',
+    private: '可以一次拖入多个文件。转换完全在此浏览器内完成，文件不会上传到任何地方。',
+    set1: 'Hangul → Word 设置',
+    keepPages: '分页位置与 Hangul 完全一致', keepPagesS: '如果之后要大量修改文字，请关闭。',
+    keepLines: '换行位置也与 Hangul 完全一致', keepLinesS: '外观最接近，但之后不便编辑。',
+    notWord: '要在 MS Word 以外的程序中打开', notWordS: 'Hancom Office、Google 文档、LibreOffice 等',
+    set2: 'PDF 设置',
+    pdfWord: '将 PDF 转换为 Word（.docx）而不是 Hangul', pdfWordS: '字体、字号、颜色、行距和页边距以相同方式保留。',
+    g1: '想要看起来一样',
+    g1a: '文档中使用的字体也必须安装在打开转换后文件的电脑上。转换后，本机没有的字体会以红色标出。',
+    g1b: 'Word 文件以 MS Word 为准进行调整。在其他程序中，空格宽度和表格高度会略有不同。',
+    g1c: 'Hangul 文件保存为 .hwpx，可在 Hangul 2014 及以后版本中打开，也可用［另存为］保存为 .hwp。',
+    g1d: 'PDF 会读取每个字的位置、大小、颜色和粗细来还原段落和页边距。从 Hangul 或 Word 保存的 PDF 最接近原貌。',
+    g1e: '直接从 Word 打印时文字可能显得更粗。先另存为 PDF 再打印，效果与 Hangul 相同。',
+    g2: '暂不支持',
+    g2a: '图片、绘图对象、文本框、脚注、公式', g2b: 'Word 文件的页眉和页脚',
+    g2c: '将 .hwpx 文件转换为 Word（请先在 Hangul 中另存为 .hwp）',
+    g2d: '设有密码的文件、旧版 Word 格式（.doc）', g2e: 'PDF 中的图片和图形、扫描版 PDF（表格和彩色方框可以保留）',
+    license: '任何人都可以自由使用和修改（MIT 许可证）',
+    srcLink: '源代码与更新记录', issueLink: '反馈转换效果不好的文档',
+    converting: '正在转换…', failed: '转换失败',
+    errHwpx: '.hwpx 文件暂时无法转换为 Word。请在 Hangul 中用［另存为］→ Hangul 文档（*.hwp）保存后再拖入。',
+    errDoc: '不支持旧版 Word 格式（.doc）。请在 Word 中另存为 .docx 后再拖入。',
+    errType: '只能转换 Hangul 文档（.hwp）、Word 文档（.docx）和 PDF。',
+    errNoText: '这个 PDF 中没有可读取的文字。扫描版或由图片制成的 PDF 无法转换。',
+    errPdfPw: '这个 PDF 设有密码。请保存一份已解除密码的 PDF 后再拖入。',
+    errPdf: '无法读取这个 PDF，文件可能已损坏。（{why}）',
+    errHwp: '无法读取这个 Hangul 文件。它可能设有密码、是分发用文档，或是 Hangul 97 之前的格式。（{why}）',
+    errDocx: '无法读取这个 Word 文件。它可能设有密码或已损坏。（{why}）',
+    getWord: '下载 Word 文件', getHwp: '下载 Hangul 文件',
+    rPdfWord: 'PDF → Word', rPdfHwp: 'PDF → Hangul', rHwpWord: 'Hangul → Word', rWordHwp: 'Word → Hangul',
+    pages: '{n} 页', paras: '{n} 个段落', tables: '{n} 个表格',
+    fontMissing: '缺少 {f}',
+    missingNote: '本机未安装以下字体：{list}。如果被其他字体替代，行和页会发生变化，请先安装字体再打开。',
+    unknownNote: '字体 {list} 没有已测量的空格宽度，因此该部分未作调整。长段落的换行位置可能略有不同。',
+    approx: '无法原样保留、做了近似处理的地方：{n} 类', approxItem: '{msg}（{c} 处）',
+  },
+  ja: {
+    title: 'HWP ↔ Word 変換ツール — HWP→DOCX / DOCX→HWPX / PDF→HWPX',
+    desc: '韓国のワープロ Hangul（.hwp）のファイルを Word に、Word のファイルを Hangul（.hwpx）に、PDF を Hangul に変換します。フォント、字間、行間、余白、表をそのまま保ちます。ファイルはブラウザの外に出ません。',
+    mark: 'HWP<span>↔</span>Word',
+    h1: 'Hangul のファイルは Word に、<br>Word のファイルは Hangul に。',
+    lead: 'フォント、字間、行間、余白、表の形までそのまま移します。変換後に文字が別の行にずれないよう、両方のソフトが実際に文字を置く位置を測って合わせました。Hangul は韓国 Hancom 社のワープロソフトです（.hwp / .hwpx）。',
+    dropAria: 'ファイルを置く場所', dropH2: '変換するファイルをここにドロップ',
+    hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
+    pick: 'ファイルを選ぶ',
+    private: '複数のファイルをまとめてドロップできます。変換はこのブラウザの中だけで行われ、ファイルはどこにもアップロードされません。',
+    set1: 'Hangul → Word の設定',
+    keepPages: '改ページの位置を Hangul と同じに固定', keepPagesS: '文章を大きく書き直す予定なら、オフにしてください。',
+    keepLines: '改行の位置も Hangul と同じに固定', keepLinesS: '見た目は最も近くなりますが、あとで編集しにくくなります。',
+    notWord: 'MS Word 以外のソフトで開く', notWordS: 'Hancom Office、Google ドキュメント、LibreOffice など',
+    set2: 'PDF の設定',
+    pdfWord: 'PDF を Hangul ではなく Word（.docx）に変換', pdfWordS: 'フォント・サイズ・色・行間・余白は同じ方法で移します。',
+    g1: '同じ見た目にするには',
+    g1a: '文書で使われているフォントが、変換後のファイルを開くパソコンにも入っている必要があります。変換後、このパソコンにないフォントを赤で表示します。',
+    g1b: 'Word ファイルは MS Word に合わせて調整しています。ほかのソフトでは空白の幅や表の高さが少し異なります。',
+    g1c: 'Hangul ファイルは .hwpx で作成します。Hangul 2014 以降で開け、［名前を付けて保存］で .hwp にもできます。',
+    g1d: 'PDF は文字の位置・大きさ・色・太さを読み取って段落と余白を再現します。Hangul や Word から保存した PDF ほど元の見た目に近くなります。',
+    g1e: 'Word から直接印刷すると文字が太く出ることがあります。PDF に保存してから印刷すると Hangul と同じになります。',
+    g2: 'まだ移せないもの',
+    g2a: '画像、図形、テキストボックス、脚注、数式', g2b: 'Word のヘッダーとフッター',
+    g2c: '.hwpx ファイルの Word への変換（Hangul で .hwp に保存してから入れてください）',
+    g2d: 'パスワード付きのファイル、旧形式の Word（.doc）', g2e: 'PDF の画像・図形、スキャンした PDF（表と色付きの枠は移します）',
+    license: 'だれでも自由に使い、改変できます（MIT ライセンス）',
+    srcLink: 'ソースと更新履歴', issueLink: 'うまく変換できない文書を知らせる',
+    converting: '変換中…', failed: '変換できませんでした',
+    errHwpx: '.hwpx ファイルはまだ Word に変換できません。Hangul で［名前を付けて保存］→ Hangul 文書（*.hwp）で保存してから、もう一度入れてください。',
+    errDoc: '旧形式の Word（.doc）は変換できません。Word で .docx に保存してから、もう一度入れてください。',
+    errType: '変換できるのは Hangul 文書（.hwp）、Word 文書（.docx）、PDF だけです。',
+    errNoText: '文字を読み取れない PDF です。スキャンした PDF や画像で作られた PDF は変換できません。',
+    errPdfPw: 'パスワード付きの PDF です。パスワードを解除した PDF を保存してから、もう一度入れてください。',
+    errPdf: 'この PDF を読み取れませんでした。ファイルが壊れている可能性があります。（{why}）',
+    errHwp: 'この Hangul ファイルを読み取れませんでした。パスワード付き、配布用文書、または Hangul 97 より前の形式の可能性があります。（{why}）',
+    errDocx: 'この Word ファイルを読み取れませんでした。パスワード付きか、壊れている可能性があります。（{why}）',
+    getWord: 'Word ファイルを保存', getHwp: 'Hangul ファイルを保存',
+    rPdfWord: 'PDF → Word', rPdfHwp: 'PDF → Hangul', rHwpWord: 'Hangul → Word', rWordHwp: 'Word → Hangul',
+    pages: '{n} ページ', paras: '段落 {n} 個', tables: '表 {n} 個',
+    fontMissing: '{f} なし',
+    missingNote: '{list} フォントがこのパソコンにありません。別のフォントに置き換わると行やページがずれるので、フォントをインストールしてから開いてください。',
+    unknownNote: '{list} フォントは空白の幅の測定値がないため、その部分は調整していません。長い段落では改行位置が少し異なることがあります。',
+    approx: 'そのまま移せず近似したところ：{n} 種類', approxItem: '{msg}（{c} か所）',
+  },
+};
+// 변환 보고에 나오는 한국어 문구 → [영어, 중국어, 일본어]
+window.I18N_NOTES = [
+  ['각주·미주는 아직 옮기지 못함', 'Footnotes and endnotes are not carried over yet', '脚注和尾注暂未保留', '脚注・文末脚注はまだ移せません'],
+  ['한 문단 안에서 줄마다 높이가 다른 경우 가장 많이 쓰인 줄 높이로 통일', 'Where line heights vary within a paragraph, the most common height is used', '同一段落内行高不同时，统一为最常用的行高', '段落内で行の高さが異なる場合、最も多い高さにそろえました'],
+  ['표의 일부 칸은 워드에서 한글보다 조금 높아질 수 있음 (줄 간격·테두리 계산 방식 차이)', 'Some table cells may be slightly taller in Word than in Hangul (line spacing and borders are calculated differently)', '部分表格单元格在 Word 中可能比 Hangul 略高（行距和边框的计算方式不同）', '表の一部のセルは Word で Hangul より少し高くなることがあります（行間・罫線の計算方法の違い）'],
+  ['표와 글자가 한 줄에 섞인 문단은 글자와 표를 따로 배치', 'Paragraphs that mix tables and text on one line are laid out separately', '表格与文字在同一行混排的段落，文字和表格分开排列', '表と文字が同じ行に混在する段落は、文字と表を別々に配置しました'],
+  ['칸의 그림 채우기는 옮기지 못함', 'Image fills in cells are not carried over', '单元格的图片填充无法保留', 'セルの画像塗りつぶしは移せません'],
+  ['칸의 그러데이션 채우기는 옮기지 못함', 'Gradient fills in cells are not carried over', '单元格的渐变填充无法保留', 'セルのグラデーション塗りつぶしは移せません'],
+  ['칸에 저장된 높이의 합이 표 전체 높이와 달라 표 전체 높이에 맞춰 줄 높이를 조정', 'Row heights were adjusted to match the overall table height', '单元格高度之和与表格总高度不一致，已按总高度调整行高', 'セルの高さの合計が表全体の高さと異なるため、表全体に合わせて行の高さを調整しました'],
+  ['쪽 번호의 안쪽/바깥쪽 위치는 가운데로 근사', 'Inside/outside page-number positions approximated as centered', '页码的内侧/外侧位置近似为居中', 'ページ番号の内側／外側の位置は中央で近似しました'],
+  ['짝수/홀수 쪽 머리말·꼬리말 구분은 첫 번째 것만 옮김', 'Only the first of separate odd/even headers and footers is carried over', '奇偶页不同的页眉页脚只保留第一个', '奇数／偶数ページ別のヘッダー・フッターは最初のものだけ移しました'],
+  ['자동 번호(표·그림 번호)는 일반 숫자로 바꿔 넣음', 'Automatic table and figure numbers converted to plain numbers', '自动编号（表格、图片编号）改为普通数字', '自動番号（表・図番号）は通常の数字に置き換えました'],
+  ['워드의 줄 격자(문서 격자) 설정은 옮기지 않음 — 줄 간격이 조금 다를 수 있음', 'Word document grid not carried over; line spacing may differ slightly', 'Word 的文档网格设置未保留，行距可能略有不同', 'Word の文字グリッド設定は移していません。行間が少し異なることがあります'],
+  ['워드 자동 번호는 일반 글자로 바꿔 넣음', 'Word automatic numbering converted to plain text', 'Word 自动编号改为普通文字', 'Word の自動番号は通常の文字に置き換えました'],
+  ['어울림 배치 표는 워드의 떠 있는 표로 근사', 'Text-wrapped tables approximated as floating tables in Word', '文字环绕的表格近似为 Word 的浮动表格', '文字の折り返しのある表は Word のフローティング表で近似しました'],
+  ['세로쓰기 칸은 워드의 세로쓰기로 근사', 'Vertical-text cells approximated with Word vertical text', '竖排单元格近似为 Word 的竖排文字', '縦書きのセルは Word の縦書きで近似しました'],
+  ['문단 번호(자동 번호)는 일반 글자로 바꿔 넣음', 'Paragraph numbering converted to plain text', '段落编号（自动编号）改为普通文字', '段落番号（自動番号）は通常の文字に置き換えました'],
+  ['머리말·꼬리말은 아직 옮기지 못함', 'Headers and footers are not carried over yet', '页眉和页脚暂未保留', 'ヘッダーとフッターはまだ移せません'],
+  ['글자 크기를 0.5pt 단위로 반올림 (워드는 0.5pt 단위만 지원)', 'Font sizes rounded to 0.5 pt (Word supports 0.5 pt steps only)', '字号四舍五入到 0.5pt（Word 只支持 0.5pt 步长）', '文字サイズを 0.5pt 単位に丸めました（Word は 0.5pt 単位のみ対応）'],
+  ['글자 위 줄(윗줄)은 워드에 없어 생략', 'Overlines omitted (Word has none)', '上划线在 Word 中不存在，已省略', '上線は Word にないため省略しました'],
+  ['글 앞·뒤로 배치한 표는 워드의 글상자에 담아 같은 자리에 띄움', 'Tables placed in front of or behind text were put in Word text boxes at the same position', '置于文字上方或下方的表格放入 Word 文本框，悬浮在相同位置', '文字の前面・背面に置いた表は Word のテキストボックスに入れて同じ位置に配置しました'],
+  ['그림·도형은 아직 옮기지 못함', 'Images and shapes are not carried over yet', '图片和图形暂未保留', '画像・図形はまだ移せません'],
+  ['그리기 개체·글상자·그림은 아직 옮기지 못함 (글상자 안의 글만 본문으로 옮김)', 'Drawing objects, text boxes and images are not carried over yet (text inside text boxes is moved into the body)', '绘图对象、文本框和图片暂未保留（仅将文本框中的文字移入正文）', '図形・テキストボックス・画像はまだ移せません（テキストボックス内の文字だけ本文に移しました）'],
+  ['표 선·칸 배경으로 표를 되살림', 'Tables rebuilt from table lines and cell shading', '根据表格线和单元格底色还原表格', '罫線とセルの背景から表を再構成しました'],
+  ['배경을 옮기지 못한 흰 글씨는 검정으로 바꿈', 'White text whose background could not be carried over was changed to black', '无法保留背景的白色文字已改为黑色', '背景を移せなかった白い文字は黒に変えました'],
+  ['그림은 옮기지 않음', 'Images are not carried over', '图片未保留', '画像は移していません'],
+  [/^쪽 넘김 위치를 맞추려고 아래쪽 여백을 ([\d.]+)mm 줄임/, 'Bottom margin reduced by $1 mm to match page breaks (line spacing is calculated differently)', '为对齐分页位置，下边距减少 $1 mm（行距计算方式不同）', '改ページ位置を合わせるため下余白を $1 mm 減らしました（行間の計算方法の違い）'],
+  [/^글꼴 '(.+)'의 띄어쓰기 폭을 몰라 빈칸 폭은 한글 기본값으로 둠$/, "Space width of font '$1' unknown; Hangul's default space width was kept", '不知道字体“$1”的空格宽度，保留了 Hangul 的默认空格宽度', 'フォント「$1」の空白幅が不明なため、Hangul の既定の空白幅のままにしました'],
+  [/^글꼴 '(.+)'의 띄어쓰기 폭을 몰라 영문·숫자 사이 빈칸은 보정하지 않음$/, "Space width of font '$1' unknown; spaces between Latin letters and numbers were not adjusted", '不知道字体“$1”的空格宽度，英文和数字之间的空格未作调整', 'フォント「$1」の空白幅が不明なため、英数字間の空白は調整していません'],
+  [/^글꼴 '(.+)'의 워드 한 줄 높이를 몰라 1\.2배로 어림함$/, "Word line height of font '$1' unknown; estimated as 1.2×", '不知道字体“$1”在 Word 中的单倍行高，按 1.2 倍估算', 'フォント「$1」の Word での 1 行の高さが不明なため、1.2 倍で見積もりました'],
+];
+</script>
+<script>
 (() => {
   const $ = (id) => document.getElementById(id);
   const drop = $('drop'), input = $('file'), results = $('results');
   const KNOWN = Hwp2Docx.HANGUL_ADVANCE;
 
-  // github.io 에서 열렸을 때 저장소 주소 표시
-  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
-  if (m) {
-    const repo = location.pathname.split('/').filter(Boolean)[0];
-    if (repo) {
-      const url = `https://github.com/${m[1]}/${repo}`;
-      $('src').innerHTML = `<a href="${url}">소스와 업데이트 내역</a>`;
-      $('src2').innerHTML = `<a href="${url}/issues">잘 안 바뀌는 문서 알려 주기</a>`;
+  // ── 언어: 주소의 ?lang= → 지난번 고른 언어 → 브라우저 언어 → 한국어 ──
+  const LANGS = ['ko', 'en', 'zh', 'ja'];
+  let lang = 'ko';
+  const t = (key, vars = {}) => String((I18N[lang] ?? I18N.ko)[key] ?? I18N.ko[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+  const noteText = (msg) => {
+    const col = LANGS.indexOf(lang);
+    if (col <= 0) return msg;
+    for (const row of I18N_NOTES) {
+      if (typeof row[0] === 'string' ? row[0] === msg : row[0].test(msg)) return typeof row[0] === 'string' ? row[col] : msg.replace(row[0], row[col]);
     }
+    return msg;
+  };
+  // github.io 에서 열렸을 때 저장소 주소
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const repo = m && location.pathname.split('/').filter(Boolean)[0];
+  const repoUrl = repo ? `https://github.com/${m[1]}/${repo}` : null;
+  function setLang(next, save) {
+    lang = LANGS.includes(next) ? next : 'ko';
+    document.documentElement.lang = lang;
+    document.title = t('title');
+    document.querySelector('meta[name="description"]').setAttribute('content', t('desc'));
+    for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = t(e.dataset.i18n);
+    for (const e of document.querySelectorAll('[data-i18n-html]')) e.innerHTML = t(e.dataset.i18nHtml);
+    for (const e of document.querySelectorAll('[data-i18n-aria]')) e.setAttribute('aria-label', t(e.dataset.i18nAria));
+    for (const b of document.querySelectorAll('.langs button')) b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
+    if (repoUrl) {
+      $('src').innerHTML = ''; $('src2').innerHTML = '';
+      const l1 = el('a', null, t('srcLink')); l1.href = repoUrl; $('src').append(l1);
+      const l2 = el('a', null, t('issueLink')); l2.href = `${repoUrl}/issues`; $('src2').append(l2);
+    }
+    if (save) { try { localStorage.setItem('hwp2docx.lang', lang); } catch {} }
   }
+  for (const b of document.querySelectorAll('.langs button')) b.addEventListener('click', () => setLang(b.dataset.lang, true));
 
   // 글꼴 설치 여부: 지정 글꼴로 그린 폭이 기본 글꼴 두 가지와 모두 같으면 없는 것으로 본다
   const ctx = document.createElement('canvas').getContext('2d');
@@ -208,6 +464,13 @@
   const installed = (name) => { const q = `"${name.replace(/"/g, '')}"`; return ['monospace', 'serif'].some(b => Math.abs(width(`${q}, ${b}`) - width(b)) > 0.5); };
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  {
+    let saved = null; try { saved = localStorage.getItem('hwp2docx.lang'); } catch {}
+    const asked = new URLSearchParams(location.search).get('lang');
+    const browser = (navigator.languages || [navigator.language || '']).map(x => String(x).slice(0, 2).toLowerCase()).find(x => LANGS.includes(x));
+    const first = (navigator.languages || [navigator.language || ''])[0] || '';
+    setLang(asked || saved || browser || (/^ko/i.test(first) ? 'ko' : 'en'), !!asked);
+  }
 
   // pdf.js는 PDF를 처음 넣을 때만 불러온다 (2MB 남짓)
   let pdfjsPromise = null;
@@ -222,13 +485,13 @@
   async function handle(file) {
     const row = el('div', 'row');
     const head = el('div'); head.append(el('div', 'name', file.name));
-    const meta = el('div', 'meta', '바꾸는 중'); head.append(meta);
+    const meta = el('div', 'meta', t('converting')); head.append(meta);
     row.append(head); results.prepend(row);
-    const fail = (text) => { row.classList.add('failed'); meta.textContent = '바꾸지 못했습니다'; const x = el('div', 'extra'); x.append(el('p', 'note', text)); row.append(x); };
+    const fail = (text) => { row.classList.add('failed'); meta.textContent = t('failed'); const x = el('div', 'extra'); x.append(el('p', 'note', text)); row.append(x); };
 
-    if (/\.hwpx$/i.test(file.name)) return fail('.hwpx 파일은 아직 워드로 바꾸지 못합니다. 한글에서 [다른 이름으로 저장] → 한글 문서(*.hwp)로 저장한 뒤 다시 넣어 주세요.');
+    if (/\.hwpx$/i.test(file.name)) return fail(t('errHwpx'));
     const isHwp = /\.hwp$/i.test(file.name), isDocx = /\.docx$/i.test(file.name), isPdf = /\.pdf$/i.test(file.name);
-    if (!isHwp && !isDocx && !isPdf) return fail(/\.doc$/i.test(file.name) ? '예전 워드 형식(.doc)은 바꾸지 못합니다. 워드에서 .docx로 저장한 뒤 다시 넣어 주세요.' : '한글 문서(.hwp), 워드 문서(.docx), PDF만 바꿀 수 있습니다.');
+    if (!isHwp && !isDocx && !isPdf) return fail(/\.doc$/i.test(file.name) ? t('errDoc') : t('errType'));
     const pdfToWord = isPdf && $('pdfWord').checked;
     const toWord = isHwp || pdfToWord;
 
@@ -246,36 +509,36 @@
     } catch (e) {
       console.error(e);
       const why = e && e.message ? e.message : String(e);
-      if (isPdf) return fail(e && e.code === 'NO_TEXT' ? '글자를 읽을 수 없는 PDF입니다. 스캔했거나 그림으로 만든 PDF는 바꾸지 못합니다.'
-        : e && e.code === 'PASSWORD' ? '암호가 걸린 PDF입니다. 암호를 푼 PDF로 다시 저장한 뒤 넣어 주세요.'
-        : `이 PDF는 읽지 못했습니다. 손상된 파일일 수 있습니다. (${why})`);
-      return fail(isHwp
-        ? `이 한글 파일은 읽지 못했습니다. 암호가 걸렸거나 배포용 문서이거나, 한글 97 이전 형식일 수 있습니다. (${why})`
-        : `이 워드 파일은 읽지 못했습니다. 암호가 걸렸거나 손상된 파일일 수 있습니다. (${why})`);
+      if (isPdf) return fail(e && e.code === 'NO_TEXT' ? t('errNoText') : e && e.code === 'PASSWORD' ? t('errPdfPw') : t('errPdf', { why }));
+      return fail(t(isHwp ? 'errHwp' : 'errDocx', { why }));
     }
 
     const { data, report } = out;
     const name = file.name.replace(/\.(hwp|docx|pdf)$/i, '') + (toWord ? '.docx' : '.hwpx');
-    const a = el('a', 'get', toWord ? '워드 파일 받기' : '한글 파일 받기');
+    const a = el('a', 'get', t(toWord ? 'getWord' : 'getHwp'));
     a.href = URL.createObjectURL(new Blob([data], { type: toWord ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/hwp+zip' }));
     a.download = name;
     row.append(a);
     meta.innerHTML = '';
-    meta.append(el('b', null, isPdf ? (toWord ? 'PDF → 워드' : 'PDF → 한글') : isHwp ? '한글 → 워드' : '워드 → 한글'), document.createTextNode(`  ${name}, ` + (isPdf ? `${report.stats.pages}쪽, ` : '') + `문단 ${report.stats.paragraphs}개` + (isHwp ? `, 표 ${report.stats.tables}개` : '')));
+    const parts = [name];
+    if (isPdf) parts.push(t('pages', { n: report.stats.pages }));
+    parts.push(t('paras', { n: report.stats.paragraphs }));
+    if (isHwp) parts.push(t('tables', { n: report.stats.tables }));
+    meta.append(el('b', null, t(isPdf ? (toWord ? 'rPdfWord' : 'rPdfHwp') : isHwp ? 'rHwpWord' : 'rWordHwp')), document.createTextNode('  ' + parts.join(lang === 'zh' || lang === 'ja' ? '、' : ', ')));
 
     const extra = el('div', 'extra');
     const fonts = el('div', 'fonts'); const missing = [], unknown = [];
     for (const f of report.fonts) {
       const has = installed(f);
       if (!has) missing.push(f); else if (!(f in KNOWN)) unknown.push(f);
-      fonts.append(el('span', 'font' + (has ? '' : ' missing'), has ? f : `${f} 없음`));
+      fonts.append(el('span', 'font' + (has ? '' : ' missing'), has ? f : t('fontMissing', { f })));
     }
     extra.append(fonts);
-    if (missing.length) extra.append(el('p', 'note', `${missing.join(', ')} 글꼴이 이 컴퓨터에 없습니다. 다른 글꼴로 바뀌어 보이면 줄과 쪽이 달라지니, 글꼴을 설치한 뒤 열어 주세요.`));
-    if (unknown.length && !isPdf) extra.append(el('p', 'note', `${unknown.join(', ')} 글꼴은 띄어쓰기 폭을 재 둔 값이 없어 그 부분은 맞추지 않았습니다. 긴 문단에서 줄이 바뀌는 자리가 조금 다를 수 있습니다.`));
+    if (missing.length) extra.append(el('p', 'note', t('missingNote', { list: missing.join(', ') })));
+    if (unknown.length && !isPdf) extra.append(el('p', 'note', t('unknownNote', { list: unknown.join(', ') })));
     if (report.approximations.length) {
-      const d = el('details'); d.append(el('summary', null, `그대로 옮기지 못해 비슷하게 맞춘 곳 ${report.approximations.length}가지`));
-      const ul = el('ul'); for (const x of report.approximations) ul.append(el('li', null, `${x.msg} (${x.count}곳)`));
+      const d = el('details'); d.append(el('summary', null, t('approx', { n: report.approximations.length })));
+      const ul = el('ul'); for (const x of report.approximations) ul.append(el('li', null, t('approxItem', { msg: noteText(x.msg), c: x.count })));
       d.append(ul); extra.append(d);
     }
     row.append(extra);

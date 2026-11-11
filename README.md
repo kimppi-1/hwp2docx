@@ -1,9 +1,12 @@
-# hwp2docx — 한글 ↔ 워드 변환기
+# hwp2docx — 한글 ↔ 워드 ↔ PDF 변환기
 
-한글(HWP) 문서는 워드(DOCX)로, 워드 문서는 한글(HWPX)로 바꿉니다. 글꼴, 글자 크기, 색, 자간, 장평, 줄 간격, 여백, 표 모양을 그대로 옮깁니다.
+**HWP to DOCX / DOCX to HWPX / PDF to HWPX** — [English](#english) · [中文](#中文) · [日本語](#日本語)
+
+한글(HWP) 문서는 워드(DOCX)로, 워드 문서는 한글(HWPX)로, PDF는 한글(HWPX)로 바꿉니다. 글꼴, 글자 크기, 색, 자간, 장평, 줄 간격, 여백, 표 모양을 그대로 옮깁니다.
 
 - **쓰는 곳**: https://kimppi-1.github.io/hwp2docx/ (저장소 이름을 다르게 만들었다면 그 이름으로)
 - 파일을 끌어다 놓으면 바로 변환됩니다. 설치가 필요 없습니다.
+- 화면은 오른쪽 위 단추로 한국어(가)·영어(A)·중국어(中)·일본어(あ)로 바꿀 수 있습니다. 처음에는 브라우저 언어를 따릅니다.
 - 변환은 브라우저 안에서 이루어집니다. 파일은 어디에도 올라가지 않습니다.
 
 ## 어떻게 맞추나
@@ -65,6 +68,7 @@ PDF 안 글자의 자리·크기·글꼴·색·굵기를 읽어 문단을 되살
 
 - 한글에서 저장한 PDF: 줄 끝 빈칸까지 PDF 안에 남아 있어, 문단 글과 글자색·굵기가 원본과 같게 되살아납니다 (PDF와 같은 때 저장한 한글 원본이 있는 문서 2개에서 문단 407개 모두 일치).
 - 양쪽 정렬 문서는 오른쪽 끝까지 찬 줄을 이어지는 줄로, 아닌 문서는 다음 줄 첫 낱말이 앞 줄에 들어갈 수 있었는지로 문단을 나눕니다.
+- 워드에서 저장한 PDF: 글꼴의 빈칸 폭(맑은 고딕은 글자 크기의 0.35)을 읽어 한글 빈칸 폭에 맞추고, 비스듬히 눕혀 그린 기울임 글자, 표 칸 안의 줄 간격, 오른쪽이 들쭉날쭉한 왼쪽 정렬 문서의 글 폭을 되살립니다. 쪽 나눔은 원본 쪽 아래가 많이 비어 있을 때만 넣고, 꽉 찬 쪽은 자연스럽게 넘어가게 둡니다 (워드 PDF 3개 11쪽에서 줄 88~93%가 같은 쪽·같은 내용).
 - 표: PDF에 그려진 표 선과 칸 배경으로 칸을 나누고(합친 칸 포함), 칸마다 테두리·배경색·안 여백·세로 정렬과 글을 되살립니다. 선 없이 배경만 칠한 상자도 한 칸짜리 표로 옮깁니다. 쪽을 넘어 이어지는 표는 하나로 잇고, 다음 쪽에 되풀이된 머리 줄은 한 번만 둡니다.
 - 그림·도형·밑줄은 아직 옮기지 않습니다. 배경을 옮기지 못한 흰 글씨는 검정으로 바꿉니다. 스캔한 PDF(글자 없는 그림)는 바꿀 수 없습니다.
 
@@ -111,3 +115,39 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 
 - `src/hwpx-skeleton.mjs`의 HWPX 기본 틀은 [python-hwpx](https://pypi.org/project/python-hwpx/)의 Skeleton.hwpx에서 가져왔습니다 (Apache License 2.0, Copyright 2025-2026 airmang). `NOTICE` 참고.
 - [cfb](https://github.com/SheetJS/js-cfb) (Apache-2.0), [fflate](https://github.com/101arrowz/fflate) (MIT)
+
+---
+
+## English
+
+**HWP to DOCX / DOCX to HWPX / PDF to HWPX** — a converter for Hangul, the Korean word processor by Hancom, that keeps the layout.
+
+- **Use it here**: https://kimppi-1.github.io/hwp2docx/ — drop files onto the page. Nothing to install; the page is available in Korean, English, Chinese and Japanese.
+- **Private**: conversion runs entirely in your browser. Files are never uploaded.
+- **Hangul (.hwp) → Word (.docx)**: fonts, size, color, letter spacing, character width, line spacing, margins and tables carry over. Line heights and page breaks follow where Hangul actually laid out each line.
+- **Word (.docx) → Hangul (.hwpx)**: styles, theme fonts, numbering and tables (merged cells, borders, shading, cell margins) are resolved and written as HWPX. Opens in Hangul 2014 or later.
+- **PDF → Hangul (.hwpx)** (or Word): the position, size, font, color and weight of each character are read to rebuild paragraphs, margins, line spacing and page breaks. Tables and colored boxes are rebuilt from the drawn lines and cell shading. PDFs saved from Hangul or Word convert best.
+- **Not yet supported**: images, drawing objects, text boxes, footnotes, equations, Word headers/footers, .hwpx → Word, password-protected files, .doc, scanned PDFs.
+- **In other apps**: include `hwp2docx.bundle.js` (and `vendor/pdfjs/` for PDF) and call `Hwp2Docx.hwpToDocx`, `docxToHwpx`, `pdfToHwpx` or `pdfToDocx` (see the table in "다른 앱에서 쓰기" above).
+- **Command line**: `node cli.mjs file.hwp`, `node cli-docx.mjs file.docx`, `node cli-pdf.mjs file.pdf`.
+- **License**: MIT.
+
+## 中文
+
+**HWP 转 DOCX / DOCX 转 HWPX / PDF 转 HWPX** — 保留版式的韩国 Hancom「Hangul」文字处理软件文档转换器。
+
+- **在线使用**：https://kimppi-1.github.io/hwp2docx/ ——把文件拖到页面上即可，无需安装。页面支持韩语、英语、中文和日语。
+- **隐私**：转换完全在浏览器内完成，文件不会上传。
+- Hangul（.hwp）→ Word（.docx）、Word（.docx）→ Hangul（.hwpx）、PDF → Hangul（.hwpx，也可转为 Word）。字体、字号、颜色、字间距、行距、页边距和表格都会原样保留。
+- 暂不支持：图片、绘图对象、文本框、脚注、公式、Word 页眉页脚、.hwpx 转 Word、加密文件、.doc、扫描版 PDF。
+- 许可证：MIT。
+
+## 日本語
+
+**HWP→DOCX / DOCX→HWPX / PDF→HWPX** — 韓国 Hancom 社のワープロ「Hangul」の文書を、レイアウトを保ったまま変換するツールです。
+
+- **使う**：https://kimppi-1.github.io/hwp2docx/ — ファイルをページにドロップするだけで、インストールは不要です。画面は韓国語・英語・中国語・日本語に対応しています。
+- **プライバシー**：変換はすべてブラウザ内で行われ、ファイルはアップロードされません。
+- Hangul（.hwp）→ Word（.docx）、Word（.docx）→ Hangul（.hwpx）、PDF → Hangul（.hwpx、Word にも変換可）。フォント、サイズ、色、字間、行間、余白、表をそのまま移します。
+- まだ対応していないもの：画像、図形、テキストボックス、脚注、数式、Word のヘッダー・フッター、.hwpx→Word、パスワード付きファイル、.doc、スキャンした PDF。
+- ライセンス：MIT。
