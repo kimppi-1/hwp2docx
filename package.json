@@ -1,12 +1,21 @@
 {
   "name": "hwp2docx",
-  "version": "0.2.0",
-  "description": "한글(HWP 5.0) 문서를 서식 그대로 워드(DOCX)로 옮기는 변환기",
+  "version": "0.3.0",
+  "description": "한글(HWP) ↔ 워드(DOCX) 서식 그대로 변환",
   "type": "module",
-  "bin": { "hwp2docx": "./cli.mjs" },
+  "bin": {
+    "hwp2docx": "./cli.mjs",
+    "docx2hwpx": "./cli-docx.mjs"
+  },
   "scripts": {
     "build": "esbuild web-entry.mjs --bundle --format=iife --global-name=Hwp2Docx --minify --platform=browser --outfile=hwp2docx.bundle.js"
   },
-  "dependencies": { "cfb": "^1.2.2", "fflate": "^0.8.2" },
-  "devDependencies": { "esbuild": "^0.25.0" }
+  "dependencies": {
+    "cfb": "^1.2.2",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "license": "MIT"
 }

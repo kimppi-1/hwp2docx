@@ -96,8 +96,8 @@ export function buildDocx(doc, opts = {}) {
         if (fontSpace == null) note(`글꼴 '${font}'의 띄어쓰기 폭을 몰라 영문·숫자 사이 빈칸은 보정하지 않음`);
         else sp = Math.round(jagan + scale * (HWP_SPACE - fontSpace));
       } else {
-        // 필요한 보정량은 계산값보다 15%쯤 컸다(실측) → 그만큼 얹고, 두 배로 적용되므로 절반만 준다.
-        sp = Math.round((jagan + scale * (HWP_SPACE - (HANGUL_ADVANCE[font] ?? 1) / 2) * 1.15) / 2);
+        // 두 배로 적용되므로 절반만 준다.
+        sp = Math.round((jagan + scale * (HWP_SPACE - (HANGUL_ADVANCE[font] ?? 1) / 2)) / 2);
       }
     }
     if (sp) x += `<w:spacing w:val="${sp}"/>`;
@@ -145,7 +145,8 @@ export function buildDocx(doc, opts = {}) {
           let spaceKind = 0;
           if (cp === 0x20) {
             const before = neighbour(items, it, chars, ci, -1), after = neighbour(items, it, chars, ci, 1);
-            spaceKind = (before == null && after == null) || isEastAsian(before) || isEastAsian(after) ? 'ea' : 'latin';
+            // 워드 실측: 앞이나 뒤가 한글이면, 또는 문단·줄 맨 앞 빈칸이면(앞 글자 없음) 동아시아 폭. 앞뒤가 모두 영문·숫자·문장부호일 때만 글꼴 빈칸 폭.
+            spaceKind = before == null || after == null || isEastAsian(before) || isEastAsian(after) ? 'ea' : 'latin';
           }
           const r = rPr(it.cs, lang, spaceKind, cp >= 0x2610 && cp <= 0x2612);
           if (r.sizeHu > maxSize) maxSize = r.sizeHu;
