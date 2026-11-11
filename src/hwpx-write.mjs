@@ -157,6 +157,7 @@ export function buildHwpx(model, opts = {}) {
 
   // 워드 줄 간격 → 한글 줄 간격
   function lineSpacing(ppr, sizeHalfPt, eaFont) {
+    if (ppr.hwpLine) return ppr.hwpLine;   // 한글 값을 그대로 쓰는 경우(설교 틀 등)
     const sp = ppr.spacing || {};
     if (sp.line == null) sp.line = 240, sp.lineRule = 'auto';
     if (sp.lineRule === 'exact') return { type: 'FIXED', value: H(sp.line) };
