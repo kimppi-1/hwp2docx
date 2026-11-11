@@ -6,7 +6,7 @@
   "bin": {
     "hwp2docx": "./cli.mjs",
     "docx2hwpx": "./cli-docx.mjs",
-    "sermon2hwp": "cli-sermon.mjs"
+    "styled2hwp": "cli-styled.mjs"
   },
   "scripts": {
     "build": "esbuild web-entry.mjs --bundle --format=iife --global-name=Hwp2Docx --minify --platform=browser --outfile=hwp2docx.bundle.js"

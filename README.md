@@ -59,6 +59,22 @@
 - 워드에서 바로 인쇄하면 글자가 한글보다 진하게 나올 수 있습니다. PDF로 저장해 인쇄하면 같습니다.
 - 다른 워드 버전, 한컴오피스·구글 문서·LibreOffice에서는 확인하지 않았습니다.
 
+## 다른 앱에서 쓰기
+
+`hwp2docx.bundle.js` 한 파일만 넣으면 브라우저·Electron 화면에서 전역 `Hwp2Docx`로 쓸 수 있습니다. 모든 변환은 그 컴퓨터 안에서만 이루어집니다.
+
+| 함수 | 넣는 것 | 돌려주는 것 |
+|---|---|---|
+| `hwpToDocx(bytes, { keepPageBreaks, keepLineBreaks, target })` | .hwp 내용 (Uint8Array) | `{ docx, report }` |
+| `docxToHwpx(bytes)` | .docx 내용 | `{ hwpx, report }` |
+| `templateFromHwp(bytes)` | 서식 견본 .hwp | 서식 틀 객체 (JSON으로 저장 가능) |
+| `styledToHwpx(text, template?)` / `styledToDocx(text, template?)` | 색 표시 글 | .hwpx / .docx 내용 (Uint8Array) |
+| `hwpToStyled(bytes)` | .hwp 내용 | 색 표시 글 |
+
+`report`에는 `stats`(문단·표 수), `fonts`(쓰인 글꼴), `approximations`(비슷하게 맞춘 곳 `{ msg, count }`)가 들어 있습니다.
+
+색 표시 글은 한 줄이 한 문단이고, `{파:…}` `{빨:…}` `{초:…}` `{주:…}` 로 글자색을, `{굵:…}` `{파굵:…}` 처럼 굵게를 표시합니다. 서식 틀은 견본 한글 파일 본문에서 가장 많이 쓰인 글꼴·크기·줄 간격·정렬과 쪽 여백을 가져옵니다.
+
 ## 고쳐서 올리기
 
 ```
