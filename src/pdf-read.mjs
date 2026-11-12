@@ -368,10 +368,33 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   // 빈칸 폭: 한글이 만든 PDF는 한글 빈칸(글자 크기의 절반) 그대로. 다른 프로그램(워드 등)은 글꼴의 빈칸 글자 폭을 따른다.
   let producer = '';
   try { const md = await doc.getMetadata(); producer = `${md?.info?.Producer || ''} ${md?.info?.Creator || ''}`; } catch {}
-  const hancom = /hancom|hwp|한컴|한글/i.test(producer);
+  const hancom = /hancom|hwp|한컴|한글|hncpdf|pdf\s*20\d\d/i.test(producer);
   await doc.destroy?.();
   let everyLine = pages.flatMap(pg => pg.lines);
   const report = { pages: pages.length, images: pages.reduce((a, p) => a + p.images, 0), drawings: pages.reduce((a, p) => a + p.paths, 0), tables: 0, whiteText: 0, fonts: [...new Set(everyLine.flatMap(l => l.chars.filter(c => !c.ws).map(c => c.font)))] };
+  if (opts.mode === 'image_only' || opts.asImages) {
+    // 쪽 전체를 그림으로 배치하는 모드 (스캔/그림 PDF를 모양 그대로 쪽 그림으로 깔기)
+    const out = [];
+    const maxW = Math.max(...pages.map(p => p.W));
+    const maxH = Math.max(...pages.map(p => p.H));
+    for (let pi = 0; pi < pages.length; pi++) {
+      const pg = pages[pi];
+      const imgs = pg.pageImages || [];
+      const big = imgs.find(im => im.w >= pg.W * 0.7 && im.h >= pg.H * 0.7) || imgs[0];
+      if (big) {
+        out.push({
+          k: 'img',
+          data: big.data, ext: big.ext || 'png', mime: big.mime || 'image/png',
+          w: maxW, h: maxH - 2, pxW: big.pxW, pxH: big.pxH,
+          left: 0, x0: 0, y0: 0, before: 0, pageBreak: pi > 0,
+        });
+      }
+    }
+    if (out.length) {
+      const page = { w: maxW, h: maxH, left: 0, right: 0, top: 0, bottom: 0 };
+      return { paras: out, page, pages: pages.length, spaceEm: null, report };
+    }
+  }
   if (!everyLine.length) {
     if (opts.ocr !== false) {
       try {
