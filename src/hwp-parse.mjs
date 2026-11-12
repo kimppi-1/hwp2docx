@@ -68,12 +68,19 @@ function parseBorder(r) {
 function parseDocInfo(u8, version) {
   const doc = {
     faces: [[], [], [], [], [], [], []], borderFills: [], charShapes: [], tabDefs: [], numberings: [],
-    bullets: [], paraShapes: [], styles: [],
+    bullets: [], paraShapes: [], styles: [], binData: [],
   };
   let faceCounts = null, faceSeen = 0;
   for (const rec of records(u8)) {
     const r = new Reader(rec.data);
     switch (rec.tag) {
+      case TAG.BIN_DATA: {
+        const prop = r.u16(), binId = r.u16(), extLen = r.u16();
+        let ext = '';
+        for (let i = 0; i < extLen; i++) ext += String.fromCharCode(r.u16());
+        doc.binData.push({ prop, binId, ext: ext.toLowerCase() });
+        break;
+      }
       case TAG.ID_MAPPINGS: {
         const n = []; while (r.left >= 4) n.push(r.i32());
         faceCounts = n.slice(1, 8);
@@ -294,8 +301,24 @@ function parseCtrl(node, ctx) {
     }
     case 'gso ': {
       Object.assign(ctrl, parseObjCommon(r));
-      // 글상자 안의 글은 살려 둔다 (도형 자체는 아직 옮기지 못함)
       ctrl.paras = [];
+      let picRec = null;
+      const findPic = (nodes) => {
+        for (const n of nodes) {
+          if (n.tag === 85) { picRec = n; return; }
+          if (n.children?.length) findPic(n.children);
+          if (picRec) return;
+        }
+      };
+      findPic(kids);
+      if (picRec && ctx?.binMap) {
+        const binId = picRec.data.length >= 73 ? new DataView(picRec.data.buffer, picRec.data.byteOffset, picRec.data.byteLength).getUint16(71, true) : 0;
+        const bin = ctx.binMap.get(binId);
+        if (bin) {
+          ctrl.data = bin.data;
+          ctrl.ext = bin.ext || 'png';
+        }
+      }
       const walk = (ns) => { for (const k of ns) { if (k.tag === TAG.PARA_HEADER) ctrl.paras.push(parsePara(k, ctx)); else walk(k.children); } };
       walk(kids);
       break;
@@ -392,11 +415,28 @@ export function parseHwp(input) {
   const stream = (name) => { const d = get(name); if (!d) return null; return compressed ? inflateSync(d) : d; };
   const doc = parseDocInfo(stream('/DocInfo') ?? stream('DocInfo'), version);
   doc.version = version.join('.');
+
+  const binMap = new Map();
+  for (const b of doc.binData || []) {
+    const ext = b.ext || 'png';
+    const num = String(b.binId).padStart(4, '0');
+    const name = `BIN${num}.${ext}`;
+    const raw = get(`/BinData/${name}`) ?? get(`BinData/${name}`) ?? get(`/${name}`) ?? get(name);
+    if (raw) {
+      let data = raw;
+      if (compressed) {
+        try { data = inflateSync(raw); } catch { data = raw; }
+      }
+      binMap.set(b.binId, { data, ext });
+    }
+  }
+  const ctx = { binMap };
+
   doc.sections = [];
   for (let i = 0; ; i++) {
     const s = stream(`/BodyText/Section${i}`) ?? stream(`BodyText/Section${i}`);
     if (!s) break;
-    doc.sections.push({ paras: parseParaList(recordTree(s), {}) });
+    doc.sections.push({ paras: parseParaList(recordTree(s), ctx) });
   }
   return doc;
 }

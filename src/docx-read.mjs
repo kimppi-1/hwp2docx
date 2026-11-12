@@ -359,7 +359,31 @@ export function readDocx(bytes) {
           case 'noBreakHyphen': pushText('‑', rpr); break;
           case 'softHyphen': break;
           case 'sym': { const c = parseInt(k.a.char, 16); pushText(bulletText(String.fromCharCode(c >= 0xF000 ? c : 0xF000 + c), k.a.font), rpr); break; }
-          case 'drawing': case 'pict': case 'object': note('그림·도형은 아직 옮기지 못함'); break;
+          case 'drawing': case 'pict': {
+            const findDeep = (node, name) => {
+              if (typeof node !== 'object') return null;
+              if (node.n === name) return node;
+              for (const ch of node.c || []) { const res = findDeep(ch, name); if (res) return res; }
+              return null;
+            };
+            const blip = findDeep(k, 'blip');
+            const rId = blip?.a?.['r:embed'] || blip?.a?.embed;
+            const target = rId ? rels[rId] : null;
+            const ext = target ? target.split('.').pop().toLowerCase() : 'png';
+            const mediaPath = target ? (target.startsWith('/') ? target.slice(1) : target.startsWith('word/') ? target : `word/${target}`) : null;
+            const data = mediaPath ? files[mediaPath] : null;
+            if (data) {
+              const extent = findDeep(k, 'extent');
+              const EMU_PER_TWIP = 635; // 1 twip = 635 EMU
+              const w = extent?.a?.cx ? Math.round(num(extent.a.cx, 0) / EMU_PER_TWIP) : 2880;
+              const h = extent?.a?.cy ? Math.round(num(extent.a.cy, 0) / EMU_PER_TWIP) : 2880;
+              runs.push({ t: 'img', data, ext, w, h, inline: true, rpr });
+            } else {
+              note('그림·도형은 아직 옮기지 못함');
+            }
+            break;
+          }
+          case 'object': note('그림·도형은 아직 옮기지 못함'); break;
           case 'footnoteReference': case 'endnoteReference': note('각주·미주는 아직 옮기지 못함'); break;
           case 'lastRenderedPageBreak': break;
         }
