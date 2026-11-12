@@ -26,7 +26,12 @@ function wordModel(m) {
       hwpWordBreak: !!p.wordBreak,
     };
     const base = { font: p.runs[0]?.font ?? p.font ?? '함초롬바탕', size: p.size, color: '000000', bold: false, italic: false };
-    return { k: 'p', ppr, markR: rpr(p.runs.at(-1) ?? base), runs: p.runs.map(r => ({ t: 'text', text: r.text, rpr: rpr(r) })) };
+    const fl = p.floats?.map(f => ({ ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) }));
+    return { k: 'p', ppr, markR: rpr(p.runs.at(-1) ?? base), runs: p.runs.map(r => ({ t: 'text', text: r.text, rpr: rpr(r) })), ...(fl ? { floats: fl } : {}) };
+  };
+  const img = (im) => {
+    const fl = im.floats?.map(f => ({ ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) }));
+    return { k: 'img', data: im.data, ext: im.ext || 'png', mime: im.mime || 'image/png', w: tw(im.w), h: tw(im.h), pxW: im.pxW, pxH: im.pxH, left: tw(im.left || 0), before: tw(im.before || 0), pageBreak: im.pageBreak, ...(fl ? { floats: fl } : {}) };
   };
   const bord = (b) => (b ? { type: 'single', sz: Math.max(1, Math.round(b.w * 8)), color: b.color } : undefined);
   const table = (t) => {
@@ -38,16 +43,17 @@ function wordModel(m) {
         borders: { top: bord(c.borders.top), bottom: bord(c.borders.bottom), left: bord(c.borders.left), right: bord(c.borders.right) },
         shade: c.fill, vAlign: c.vAlign,
         mar: { top: tw(c.mar.top), bottom: tw(c.mar.bottom), left: tw(c.mar.left), right: tw(c.mar.right) },
-        blocks: c.paras.map(para),
+        blocks: c.paras.map(p => (p.k === 'img' ? img(p) : para(p))),
       }));
       // hwpx-write는 칸 높이에 안 여백·아래 선 굵기를 더하므로 미리 뺀다
       const mar = Math.max(0, ...cells.map(c => c.mar.top + c.mar.bottom));
       const bw = Math.max(0, ...cells.map(c => (c.borders.bottom ? c.borders.bottom.sz / 8 * 20 : 0)));
       return { h: Math.max(20, tw(h) - mar - bw), hRule: 'atLeast', header: r < (t.headerRows || 0), cells };
     });
-    return { k: 'tbl', grid: t.cols.map(tw), rows, borders: {}, cellMar: { top: 0, bottom: 0, left: 0, right: 0 }, jc: 'left', ind: tw(t.left), before: tw(t.before || 0), pageBreak: t.pageBreak };
+    const fl = t.floats?.map(f => ({ ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) }));
+    return { k: 'tbl', grid: t.cols.map(tw), rows, borders: {}, cellMar: { top: 0, bottom: 0, left: 0, right: 0 }, jc: 'left', ind: tw(t.left), before: tw(t.before || 0), pageBreak: t.pageBreak, ...(fl ? { floats: fl } : {}) };
   };
-  const blocks = m.paras.map(p => (p.k === 'tbl' ? table(p) : para(p)));
+  const blocks = m.paras.map(p => (p.k === 'tbl' ? table(p) : p.k === 'img' ? img(p) : para(p)));
   return {
     sumSpacing: true, defaultTab: 800,
     // 한글 기본(위 20mm + 머리말 15mm, 아래 15mm + 꼬리말 15mm)처럼 여백을 머리말·꼬리말 칸과 나눠 둔다 (보이는 위치는 같다)
@@ -70,7 +76,8 @@ function hwpModel(m) {
     const k = [r.font, r.size, r.color, r.bold, r.italic].join('|');
     if (!csKey.has(k)) {
       const f = faceId(r.font);
-      t.charShapes.push({ ...baseCs, face: Array(7).fill(f), ratio: Array(7).fill(100), spacing: Array(7).fill(0), relSize: Array(7).fill(100), offset: Array(7).fill(0), size: U(r.size), bold: !!r.bold, italic: !!r.italic, underline: 0, color: r.color });
+      const spaceEm = m.spaceEm ? (m.spaceEm[r.font] ?? SPACE_ADVANCE[r.font] ?? 0.5) : undefined;
+      t.charShapes.push({ ...baseCs, face: Array(7).fill(f), ratio: Array(7).fill(100), spacing: Array(7).fill(0), relSize: Array(7).fill(100), offset: Array(7).fill(0), size: U(r.size), bold: !!r.bold, italic: !!r.italic, underline: 0, color: r.color, ...(spaceEm != null ? { spaceEm } : {}) });
       csKey.set(k, t.charShapes.length - 1);
     }
     return csKey.get(k);
@@ -88,12 +95,26 @@ function hwpModel(m) {
   const secd = { ...lead.find(x => x.ctrl.id === 'secd').ctrl, page: { width: U(pg.w), height: U(pg.h), left: U(pg.left), right: U(pg.right), top: U(pg.top), bottom: U(pg.bottom), header: 0, footer: 0, gutter: 0, landscape: false } };
   const cold = lead.find(x => x.ctrl.id === 'cold')?.ctrl ?? { id: 'cold', count: 1, sameWidth: true, gap: 0 };
   const mkPara = (p, lead) => {
-    const base = { font: p.runs[0]?.font ?? p.font ?? '함초롬바탕', size: p.size, color: '000000', bold: false, italic: false };
+    const base = { font: p.runs?.[0]?.font ?? p.font ?? '함초롬바탕', size: p.size ?? 10, color: '000000', bold: false, italic: false };
     const items = lead ? lead(cs(base)) : [];
     let pos = items.length * 8;
-    for (const r of p.runs) { items.push({ t: 'text', text: r.text, cs: cs(r), pos }); pos += r.text.length; }
-    const sz = U(p.size);
-    return { paraShape: ps(p), style: 0, divide: p.pageBreak ? 4 : 0, items, endCharShape: cs(p.runs.at(-1) ?? base), lineSegs: [{ pos: 0, y: 0, height: sz, textHeight: sz, baseline: Math.round(sz * 0.85), gap: Math.round(sz * 0.6), x: 0, width: 0 }] };
+    for (const fl of p.floats || []) {
+      const fCtrl = { id: 'pic ', inline: false, wrap: fl.behind ? 2 : 3, vertRel: 0, horzRel: 0, vertAlign: 0, horzAlign: 0, x: U(fl.x0), y: U(fl.y0), width: U(fl.w), height: U(fl.h), z: 0, marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0, data: fl.data, ext: fl.ext || 'png', mime: fl.mime || 'image/png' };
+      items.push({ t: 'ctrl', ctrl: fCtrl, cs: cs(base), pos }); pos += 8;
+    }
+    for (const r of p.runs || []) { items.push({ t: 'text', text: r.text, cs: cs(r), pos }); pos += r.text.length; }
+    const sz = U(p.size ?? 10);
+    return { paraShape: ps(p), style: 0, divide: p.pageBreak ? 4 : 0, items, endCharShape: cs(p.runs?.at(-1) ?? base), lineSegs: [{ pos: 0, y: 0, height: sz, textHeight: sz, baseline: Math.round(sz * 0.85), gap: Math.round(sz * ((p.pct || 160) / 100 - 1)), x: 0, width: 0 }] };
+  };
+  const imgPara = (im, lead) => {
+    const ctrl = { id: 'pic ', inline: true, wrap: 0, vertRel: 2, horzRel: 2, vertAlign: 0, horzAlign: 0, x: 0, y: 0,
+      width: U(im.w), height: U(im.h), z: 0,
+      marginLeft: U(im.left || 0), marginRight: 0, marginTop: U(im.before || 0), marginBottom: 0,
+      data: im.data, ext: im.ext || 'png', mime: im.mime || 'image/png' };
+    const host = mkPara({ align: 'LEFT', left: 0, indent: 0, before: 0, pct: 100, size: 1, runs: [], pageBreak: im.pageBreak, floats: im.floats }, lead);
+    host.items.push({ t: 'ctrl', ctrl, cs: host.endCharShape, pos: host.items.length * 8 });
+    host.lineSegs[0].gap = 0;
+    return host;
   };
   // 표 → 한글 표 개체(글자처럼 취급) 하나를 담은 문단
   const bfKey = new Map();
@@ -106,25 +127,30 @@ function hwpModel(m) {
   };
   const VA = { top: 0, center: 1, bottom: 2 };
   const tablePara = (tb, lead) => {
-    const cells = tb.cells.map(c => ({
-      col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
-      width: U(tb.cols.slice(c.col, c.col + c.colSpan).reduce((a, b) => a + b, 0)),
-      height: U(tb.rows.slice(c.row, c.row + c.rowSpan).reduce((a, b) => a + b, 0)),
-      padLeft: U(c.mar.left), padRight: U(c.mar.right), padTop: U(c.mar.top), padBottom: U(c.mar.bottom), ownPadding: true,
-      borderFillId: borderFill(c), valign: VA[c.vAlign] ?? 0, textDir: 0, header: c.row < (tb.headerRows || 0),
-      paras: (c.paras.length ? c.paras : [{ align: 'LEFT', left: 0, indent: 0, before: 0, pct: 100, size: 10, runs: [] }]).map(p => mkPara(p)),
-    }));
+    const cells = tb.cells.map(c => {
+      const hasCenter = c.paras.some(p => p.align === 'CENTER');
+      const mL = hasCenter ? Math.min(1.5, c.mar.left) : c.mar.left;
+      const mR = hasCenter ? Math.min(1.5, c.mar.right) : c.mar.right;
+      return {
+        col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
+        width: U(tb.cols.slice(c.col, c.col + c.colSpan).reduce((a, b) => a + b, 0)),
+        height: U(tb.rows.slice(c.row, c.row + c.rowSpan).reduce((a, b) => a + b, 0)),
+        padLeft: U(mL), padRight: U(mR), padTop: U(c.mar.top), padBottom: U(c.mar.bottom), ownPadding: true,
+        borderFillId: borderFill(c), valign: VA[c.vAlign] ?? 0, textDir: 0, header: c.row < (tb.headerRows || 0),
+        paras: (c.paras.length ? c.paras : [{ align: 'LEFT', left: 0, indent: 0, before: 0, pct: 100, size: 10, runs: [] }]).map(p => (p.k === 'img' ? imgPara(p) : mkPara(p))),
+      };
+    });
     const ctrl = { id: 'tbl ', inline: true, wrap: 0, vertRel: 2, horzRel: 2, vertAlign: 0, horzAlign: 0, x: 0, y: 0,
       width: U(tb.cols.reduce((a, b) => a + b, 0)), height: U(tb.rows.reduce((a, b) => a + b, 0)), z: 0,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0, split: 2, repeatHeader: !!tb.headerRows,
       rows: tb.rows.length, cols: tb.cols.length, cellSpacing: 0, padLeft: 0, padRight: 0, padTop: 0, padBottom: 0, borderFillId: 0, cells };
-    const host = mkPara({ align: 'LEFT', left: tb.left, indent: 0, before: tb.before || 0, pct: 100, size: 10, runs: [], pageBreak: tb.pageBreak }, lead);
+    const host = mkPara({ align: 'LEFT', left: tb.left, indent: 0, before: tb.before || 0, pct: 100, size: 10, runs: [], pageBreak: tb.pageBreak, floats: tb.floats }, lead);
     host.items.push({ t: 'ctrl', ctrl, cs: host.endCharShape, pos: host.items.length * 8 });
     host.lineSegs[0].gap = 0;
     return host;
   };
   const lead0 = (c) => [{ t: 'ctrl', ctrl: secd, cs: c, pos: 0 }, { t: 'ctrl', ctrl: cold, cs: c, pos: 8 }];
-  t.sections = [{ paras: m.paras.map((p, i) => (p.k === 'tbl' ? tablePara(p, i === 0 ? lead0 : null) : mkPara(p, i === 0 ? lead0 : null))) }];
+  t.sections = [{ paras: m.paras.map((p, i) => (p.k === 'tbl' ? tablePara(p, i === 0 ? lead0 : null) : p.k === 'img' ? imgPara(p, i === 0 ? lead0 : null) : mkPara(p, i === 0 ? lead0 : null))) }];
   return t;
 }
 
@@ -132,7 +158,6 @@ function hwpModel(m) {
 // 결과 보고: 다른 변환기와 같은 모양 { stats, fonts, approximations }
 function toReport(r) {
   const notes = [];
-  if (r.images) notes.push({ msg: '그림은 옮기지 않음', count: r.images });
   if (r.tables) notes.push({ msg: '표 선·칸 배경으로 표를 되살림', count: r.tables });
   if (r.whiteText) notes.push({ msg: '배경을 옮기지 못한 흰 글씨는 검정으로 바꿈', count: r.whiteText });
   return { stats: { paragraphs: r.paragraphs, pages: r.pages, tables: r.tables || 0, cells: 0 }, fonts: r.fonts, approximations: notes, pdf: r };

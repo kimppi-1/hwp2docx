@@ -1,7 +1,78 @@
 // PDF → 문단 모델 (글자 위치·크기·색·굵기를 읽어 문단과 쪽 설정을 되살린다)
 // pdf.js(pdfjs-dist)는 밖에서 넘겨받는다: readPdf(bytes, pdfjs)
+import { zlibSync } from 'fflate';
 import { extractGraphics, detectTables, buildGrid } from './pdf-tables.mjs';
 // 단위: pt. 결과의 쪽 설정·여백·간격도 pt.
+
+const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+const apply = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c; }
+  return t;
+})();
+function crc32(buf, start = 0, end = buf.length) {
+  let c = 0xFFFFFFFF;
+  for (let i = start; i < end; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+export function encodePng(w, h, kind, data, fillHex = null) {
+  if (!w || !h || !data) return null;
+  const colorType = (kind === 3 || (kind === 1 && fillHex)) ? 6 : 2;
+  const bpp = colorType === 6 ? 4 : 3;
+  const stride = w * bpp + 1;
+  const raw = new Uint8Array(h * stride);
+  if (kind === 2 && data.length >= w * h * 3) {
+    for (let y = 0; y < h; y++) raw.set(data.subarray(y * w * 3, (y + 1) * w * 3), y * stride + 1);
+  } else if (kind === 3 && data.length >= w * h * 4) {
+    for (let y = 0; y < h; y++) raw.set(data.subarray(y * w * 4, (y + 1) * w * 4), y * stride + 1);
+  } else if (kind === 1) {
+    const rowBytes = (w + 7) >> 3;
+    const fr = fillHex ? parseInt(fillHex.slice(0, 2), 16) : 0;
+    const fg = fillHex ? parseInt(fillHex.slice(2, 4), 16) : 0;
+    const fb = fillHex ? parseInt(fillHex.slice(4, 6), 16) : 0;
+    for (let y = 0; y < h; y++) {
+      let dst = y * stride + 1;
+      for (let x = 0; x < w; x++) {
+        const bit = (data[y * rowBytes + (x >> 3)] >> (7 - (x & 7))) & 1;
+        if (fillHex) {
+          const on = bit === 0;
+          raw[dst++] = fr; raw[dst++] = fg; raw[dst++] = fb; raw[dst++] = on ? 255 : 0;
+        } else {
+          const v = bit ? 255 : 0;
+          raw[dst++] = v; raw[dst++] = v; raw[dst++] = v;
+        }
+      }
+    }
+  } else return null;
+  const idat = zlibSync(raw, { level: 6 });
+  const out = new Uint8Array(8 + 25 + (12 + idat.length) + 12);
+  const dv = new DataView(out.buffer);
+  out.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+  let p = 8;
+  const chunk = (type, body) => {
+    dv.setUint32(p, body.length);
+    for (let i = 0; i < 4; i++) out[p + 4 + i] = type.charCodeAt(i);
+    out.set(body, p + 8);
+    dv.setUint32(p + 8 + body.length, crc32(out, p + 4, p + 8 + body.length));
+    p += 12 + body.length;
+  };
+  const ihdr = new Uint8Array(13), idv = new DataView(ihdr.buffer);
+  idv.setUint32(0, w); idv.setUint32(4, h); ihdr[8] = 8; ihdr[9] = colorType;
+  chunk('IHDR', ihdr); chunk('IDAT', idat); chunk('IEND', new Uint8Array(0));
+  return out;
+}
+function objToPng(obj, fillHex = null) {
+  if (!obj || !obj.width || !obj.height) return null;
+  let { width: w, height: h, kind, data, bitmap } = obj;
+  if (!data && bitmap && typeof document !== 'undefined') {
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d'); ctx.drawImage(bitmap, 0, 0);
+    data = ctx.getImageData(0, 0, w, h).data; kind = 3;
+  }
+  return encodePng(w, h, kind ?? 1, data, fillHex);
+}
 
 const FONT_KO = [
   [/HCR\s*Batang|HCRBatang|HamchoromBatang/i, '함초롬바탕'], [/HCR\s*Dotum|HCRDotum|HamchoromDotum/i, '함초롬돋움'],
@@ -31,18 +102,26 @@ async function readPage(page, pdfjs) {
   const tc = await page.getTextContent();
   const O = pdfjs.OPS;
   // 연산 목록을 따라가며 글자마다 색·굵기를 기록 (textContent에는 색이 없다)
-  const stream = [];
-  let fill = '000000', mode = 0, fontId = null, images = 0, lines = 0;
+  const stream = [], imgOps = [];
+  let fill = '000000', mode = 0, fontId = null, images = 0, lines = 0, ctm = [1, 0, 0, 1, 0, 0];
   const stack = [], spaceW = [];
   for (let i = 0; i < ops.fnArray.length; i++) {
     const fn = ops.fnArray[i], a = ops.argsArray[i];
-    if (fn === O.save) stack.push([fill, mode]);
-    else if (fn === O.restore) { const s = stack.pop(); if (s) [fill, mode] = s; }
+    if (fn === O.save) stack.push([fill, mode, ctm]);
+    else if (fn === O.restore) { const s = stack.pop(); if (s) [fill, mode, ctm] = s; }
+    else if (fn === O.transform) ctm = mul(ctm, a);
     else if (fn === O.setFillRGBColor) fill = hex([a[0], a[1], a[2]]);
     else if (fn === O.setFillGray) fill = hex([a[0] * 255, a[0] * 255, a[0] * 255]);
     else if (fn === O.setTextRenderingMode) mode = a[0];
     else if (fn === O.setFont) fontId = a[0];
-    else if (fn === O.paintImageXObject || fn === O.paintInlineImageXObject || fn === O.paintImageMaskXObject) images++;
+    else if (fn === O.paintImageXObject || fn === O.paintInlineImageXObject || fn === O.paintImageMaskXObject) {
+      images++;
+      const M = mul(vpT, ctm);
+      const p0 = apply(M, 0, 0), p1 = apply(M, 1, 0), p2 = apply(M, 1, 1), p3 = apply(M, 0, 1);
+      const x0 = Math.min(p0[0], p1[0], p2[0], p3[0]), x1 = Math.max(p0[0], p1[0], p2[0], p3[0]);
+      const y0 = Math.min(p0[1], p1[1], p2[1], p3[1]), y1 = Math.max(p0[1], p1[1], p2[1], p3[1]);
+      if (x1 - x0 >= 2 && y1 - y0 >= 2) imgOps.push({ fn, arg: a[0], x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, fill });
+    }
     else if (fn === O.constructPath) lines++;
     else if (fn === O.showText || fn === O.showSpacedText) {
       for (const g of a[0] || []) {
@@ -54,6 +133,25 @@ async function readPage(page, pdfjs) {
         }
       }
     }
+  }
+  const pageImages = [], pngCache = new Map();
+  for (const op of imgOps) {
+    try {
+      let obj = null, key = null;
+      if (op.fn === O.paintImageXObject && typeof op.arg === 'string') {
+        key = op.arg;
+        const pool = key.startsWith('g_') ? page.commonObjs : page.objs;
+        obj = await Promise.race([new Promise(r => pool.get(key, r)), new Promise(r => setTimeout(() => r(null), 1500))]);
+      } else if (op.arg && typeof op.arg === 'object') obj = op.arg;
+      if (!obj || !obj.width || !obj.height) continue;
+      if (op.fn === O.paintImageMaskXObject && obj.width < 8 && obj.height < 8) continue;
+      let png = key && pngCache.has(key) ? pngCache.get(key) : null;
+      if (!png) {
+        png = objToPng(obj, op.fn === O.paintImageMaskXObject ? op.fill : null);
+        if (key && png) pngCache.set(key, png);
+      }
+      if (png) pageImages.push({ x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1, w: op.w, h: op.h, pxW: obj.width, pxH: obj.height, data: png, ext: 'png', mime: 'image/png' });
+    } catch {}
   }
   const fontName = (id) => { try { return page.commonObjs.get(id)?.name; } catch { return null; } };
   // textContent 글자에 색 맞추기 (공백 뺀 글자 순서로 맞춰 간다)
@@ -122,7 +220,7 @@ async function readPage(page, pdfjs) {
     outLines.push({ y: r.y, x0, x1, size, chars, firstWordW, trailingSpace, gapSum: gaps.reduce((a, b) => a + b, 0), gapN: gaps.length, avgGap: gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null });
   }
   const spaces = spaceW.map(([id, w]) => [fontInfo(fontName(id)).name, w]);
-  return { W, H, lines: outLines, images, paths: lines, spaces, graphics: extractGraphics(ops, O, vpT) };
+  return { W, H, lines: outLines, images, pageImages, paths: lines, spaces, graphics: extractGraphics(ops, O, vpT) };
 }
 
 // ── 2. 줄 → 문단 ──
@@ -181,10 +279,16 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
     pg.tables = [];
     for (const t of detectTables(pg.graphics)) {
       const inside = pg.lines.filter(l => l.y > t.y0 + 0.5 && l.y < t.y1 + 0.5 && l.x1 > t.x0 + 0.5 && l.x0 < t.x1 - 0.5);
-      if (!inside.length) continue;                                    // 글이 없는 장식 상자
+      const insideImgs = (pg.pageImages || []).filter(im => im.x0 >= t.x0 - 2 && im.x1 <= t.x1 + 2 && im.y0 >= t.y0 - 2 && im.y1 <= t.y1 + 2);
+      if (!inside.length && !insideImgs.length) continue;             // 글·그림이 없는 장식 상자
       const grid = buildGrid(t);
       if (grid.cells.length === 1 && pg.lines.length > 8 && inside.length > pg.lines.length * 0.6) continue;   // 쪽 전체를 두른 테두리
-      for (const c of grid.cells) c.lines = [];
+      for (const c of grid.cells) { c.lines = []; c.images = []; }
+      for (const im of insideImgs) {
+        const cx = (im.x0 + im.x1) / 2, cy = (im.y0 + im.y1) / 2;
+        const cell = grid.cells.find(c => cx >= c.x0 - 1 && cx <= c.x1 + 1 && cy >= c.y0 - 1 && cy <= c.y1 + 1);
+        if (cell) { cell.images.push(im); pg.pageImages = pg.pageImages.filter(x => x !== im); }
+      }
       const rest = [];
       for (const l of inside) {
         const byCell = new Map(), outside = [];
@@ -202,6 +306,17 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
       report.tables++;
     }
   } else for (const pg of pages) pg.tables = [];
+  for (const pg of pages) {
+    pg.blockImages = []; pg.floatImages = [];
+    const rem = pg.pageImages || [];
+    for (const im of rem) {
+      const ovLine = pg.lines.some(l => l.y - 0.85 * l.size < im.y1 - 1 && l.y + 0.15 * l.size > im.y0 + 1);
+      const ovTbl = pg.tables.some(t => t.y0 < im.y1 - 1 && t.y1 > im.y0 + 1);
+      const ovImg = rem.some(o => o !== im && o.y0 < im.y1 - 2 && o.y1 > im.y0 + 2);
+      if (!ovLine && !ovTbl && !ovImg) pg.blockImages.push(im);
+      else pg.floatImages.push({ ...im, behind: pg.lines.some(l => l.x1 > im.x0 && l.x0 < im.x1 && l.y > im.y0 && l.y < im.y1) });
+    }
+  }
   // 표 칸 안 줄 간격 (워드는 칸 안을 본문과 다른 줄 간격으로 두는 일이 많다): 칸 안 이웃 줄 간격 / 글자 크기 의 최빈값
   const cellRatios = [];
   for (const pg of pages) for (const t of pg.tables) for (const c of t.grid.cells) {
@@ -252,11 +367,11 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   const over = (s) => s * ratioOf(s) - 0.85 * s;     // 기준선 아래로 남는 줄 높이 (한글: 줄 위 → 기준선 0.85×크기)
 
   // 본문 위·아래 끝
-  const pageTop = (p) => Math.min(p.lines.length ? p.lines[0].y - 0.85 * p.lines[0].size : 1e9, ...p.tables.map(t => t.y0));
-  const pageBottom = (p) => Math.max(p.lines.length ? p.lines.at(-1).y + over(p.lines.at(-1).size) : -1e9, ...p.tables.map(t => t.y1));
-  const topBase = Math.min(...pages.filter(p => p.lines.length || p.tables.length).map(pageTop));
+  const pageTop = (p) => Math.min(p.lines.length ? p.lines[0].y - 0.85 * p.lines[0].size : 1e9, ...p.tables.map(t => t.y0), ...(p.blockImages || []).map(im => im.y0));
+  const pageBottom = (p) => Math.max(p.lines.length ? p.lines.at(-1).y + over(p.lines.at(-1).size) : -1e9, ...p.tables.map(t => t.y1), ...(p.blockImages || []).map(im => im.y1));
+  const topBase = Math.min(...pages.filter(p => p.lines.length || p.tables.length || p.blockImages?.length).map(pageTop));
   const bodyTop = Math.max(10, topBase);
-  const bodyBottom = Math.max(...pages.filter(p => p.lines.length || p.tables.length).map(pageBottom));
+  const bodyBottom = Math.max(...pages.filter(p => p.lines.length || p.tables.length || p.blockImages?.length).map(pageBottom));
   const page = { w: W, h: H, left: L, right: Math.max(10, W - R), top: bodyTop, bottom: Math.max(10, H - bodyBottom - 1) };
 
   const lineToPage = new Map(); pages.forEach(pg => pg.lines.forEach(l => lineToPage.set(l, pg)));
@@ -281,16 +396,26 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   // 앞 쪽이 거의 찼으면 자연스럽게 넘어간 것이므로 흘러가게 둔다 (한글에서 줄이 조금만 밀려도 빈 쪽이 생기지 않게).
   const fullPage = (pi) => !hancom && pi > 0 && bodyBottom - pageBottom(pages[pi - 1]) < 3 * ratio0 * S;
   pages.forEach((pg, pi) => {
-    const blocks = [...pg.lines.map(l => ({ y: l.y - 0.85 * l.size, l })), ...pg.tables.map(t => ({ y: t.y0, t }))].sort((a, b) => a.y - b.y);
+    const startIdx = paras.length;
+    let afterImg = false;
+    const blocks = [...pg.lines.map(l => ({ y: l.y - 0.85 * l.size, l })), ...pg.tables.map(t => ({ y: t.y0, t })), ...(pg.blockImages || []).map(img => ({ y: img.y0, img }))].sort((a, b) => a.y - b.y);
     blocks.forEach((b, bi) => {
       const firstOnPage = bi === 0;
       const lastOnPage = bi === blocks.length - 1;
+      if (b.img) {
+        const im = b.img;
+        const gap = Math.max(0, im.y0 - (firstOnPage || prevBottom == null ? bodyTop : prevBottom));
+        const np = { k: 'img', data: im.data, ext: im.ext, mime: im.mime, w: im.w, h: im.h, pxW: im.pxW, pxH: im.pxH, left: Math.max(0, im.x0 - L), x0: im.x0, y0: im.y0, before: gap, pageBreak: firstOnPage && paras.length > 0 && !fullPage(pi), endOfPage: lastOnPage };
+        paras.push(np); cur = null; prev = null; prevBottom = im.y1; afterImg = true;
+        return;
+      }
       if (b.t) {
         // 앞 쪽 끝에서 이어지는 표 (열이 같으면 한 표로 잇는다)
         const last = paras.at(-1);
-        if (firstOnPage && last?.k === 'tbl' && last.endOfPage && sameCols(last.parts.at(-1), b.t)) { last.parts.push(b.t); last.endOfPage = lastOnPage; prevBottom = b.t.y1; prev = null; cur = null; return; }
+        if (firstOnPage && last?.k === 'tbl' && last.endOfPage && sameCols(last.parts.at(-1), b.t)) { last.parts.push(b.t); last.endOfPage = lastOnPage; prevBottom = b.t.y1; prev = null; cur = null; afterImg = false; return; }
         const np = { k: 'tbl', parts: [b.t], before: 0, pageBreak: firstOnPage && paras.length > 0 && !fullPage(pi), endOfPage: lastOnPage };
-        addGap(np, b.t.y0 - (firstOnPage || prevBottom == null ? bodyTop : prevBottom), null);
+        const gap = b.t.y0 - (firstOnPage || prevBottom == null ? bodyTop : prevBottom);
+        if (afterImg) { np.before = Math.max(0, gap); afterImg = false; } else addGap(np, gap, null);
         paras.push(np); cur = null; prev = null; prevBottom = b.t.y1;
         return;
       }
@@ -317,11 +442,13 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
       else {
         const np = { lines: [line], before: 0, pageBreak: firstOnPage && paras.length > 0 && !fullPage(pi), flowTop: firstOnPage && fullPage(pi), mid: !firstOnPage };
         const top = line.y - 0.85 * line.size;
-        addGap(np, top - (firstOnPage || prevBottom == null ? bodyTop : prevBottom), cur);
+        const gap = top - (firstOnPage || prevBottom == null ? bodyTop : prevBottom);
+        if (afterImg) { np.before = Math.max(0, gap); afterImg = false; } else addGap(np, gap, cur);
         paras.push(np); cur = np;
       }
       prev = line; prevBottom = line.y + over(line.size);
     });
+    if (pg.floatImages?.length && paras[startIdx]) paras[startIdx].floats = pg.floatImages;
   });
 
   // 쪽 맨 위에서는 워드가 문단 위 간격을 지우므로, 흘러 넘어간 문단은 같은 모양 문단의 위 간격을 빌려 온다
@@ -346,7 +473,16 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   const out = [];
   for (const p of paras) {
     for (let k = 0; k < (p.emptyBefore || 0); k++) out.push({ align: justified ? 'JUSTIFY' : 'LEFT', left: 0, right: 0, indent: 0, before: 0, pct, size: S, runs: [], pageBreak: p.pageBreak && k === 0, font: (p.lines?.[0] ?? everyLine[0]).chars.find(c => !c.ws)?.font });
-    if (p.k === 'tbl') { out.push({ ...tableOut(p), before: p.before || 0, pageBreak: p.pageBreak && !p.emptyBefore }); continue; }
+    if (p.k === 'img') {
+      const item = { k: 'img', data: p.data, ext: p.ext, mime: p.mime, w: p.w, h: p.h, pxW: p.pxW, pxH: p.pxH, left: p.left, x0: p.x0, y0: p.y0, before: p.before || 0, pageBreak: p.pageBreak && !p.emptyBefore };
+      if (p.floats) item.floats = p.floats;
+      out.push(item); continue;
+    }
+    if (p.k === 'tbl') {
+      const item = { ...tableOut(p), before: p.before || 0, pageBreak: p.pageBreak && !p.emptyBefore };
+      if (p.floats) item.floats = p.floats;
+      out.push(item); continue;
+    }
     const f = p.lines[0], s = p.lines[1];
     let align = justified ? 'JUSTIFY' : 'LEFT', left = 0, indent = 0;   // 오른쪽 끝이 들쭉날쭉한 문서는 왼쪽 정렬
     // 상자·표 안처럼 본문보다 좁은 글: 오른쪽 여백으로 폭을 맞춘다
@@ -375,7 +511,9 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
     const bi = breakInfo(p);
     // 줄 바뀜이 모두 빈칸 자리면 '어절' 단위로 둔다. 원본이 글자 단위였어도 빈칸에서 끊겼다면 다음 낱말 첫 글자가 안 들어갔다는 뜻이라 어절 단위로도 같은 자리에서 끊긴다.
     const wordBreak = bi.n > 0 && bi.sp === bi.n;
-    out.push({ align, left, right, indent, wordBreak, before: p.before || 0, pct: pp, size: f.size, runs: toRuns(chars), pageBreak: p.pageBreak && !p.emptyBefore });
+    const item = { align, left, right, indent, wordBreak, before: p.before || 0, pct: pp, size: f.size, runs: toRuns(chars), pageBreak: p.pageBreak && !p.emptyBefore };
+    if (p.floats) item.floats = p.floats;
+    out.push(item);
   }
   // ── 표 → 칸마다 문단 ──
   function joinLines(lines) {
@@ -391,7 +529,16 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   }
   function cellParas(cell) {
     const ls = cell.lines.sort((a, b) => a.y - b.y || a.x0 - b.x0);
-    if (!ls.length) return { paras: [], mar: { top: 1, bottom: 1, left: 1.5, right: 1.5 }, vAlign: 'top' };
+    const cImgs = (cell.images || []).sort((a, b) => a.y0 - b.y0);
+    if (!ls.length && !cImgs.length) return { paras: [], mar: { top: 1, bottom: 1, left: 1.5, right: 1.5 }, vAlign: 'top' };
+    if (!ls.length && cImgs.length) {
+      const padL = Math.max(0.5, Math.min(8, Math.min(...cImgs.map(im => im.x0 - cell.x0))));
+      const top = Math.max(0, Math.min(30, cImgs[0].y0 - cell.y0));
+      return {
+        paras: cImgs.map((im, i) => ({ k: 'img', data: im.data, ext: im.ext, mime: im.mime, w: im.w, h: im.h, pxW: im.pxW, pxH: im.pxH, left: Math.max(0, im.x0 - (cell.x0 + padL)), before: i ? Math.max(0, im.y0 - cImgs[i - 1].y1) : 0 })),
+        mar: { top, bottom: 0.5, left: padL, right: padL }, vAlign: 'top',
+      };
+    }
     // 칸 안쪽 여백: 왼쪽·오른쪽 가운데 더 가까운 쪽 (오른쪽 정렬한 숫자 칸에서 여백을 너무 크게 잡지 않게)
     const padL = Math.max(0.5, Math.min(8, Math.min(...ls.map(l => l.x0 - cell.x0)), Math.min(...ls.map(l => cell.x1 - l.x1))));
     const padR = padL;
@@ -426,11 +573,20 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
       let pp = Math.round((cellR ?? ratioOf(f.size)) * 100);
       if (g.lines.length > 1 && g.pitch) pp = Math.round(g.pitch / rawOf(f) * 100);
       const n = g.lines.length - 1, sp = g.lines.slice(0, -1).filter(l => l.trailingSpace).length;
-      return { align, left, right: 0, indent, wordBreak: n > 0 && sp === n, before: g.before, pct: pp, size: f.size, runs: toRuns(chars) };
+      const y0 = f.y - 0.85 * f.size, y1 = g.lines.at(-1).y + over(g.lines.at(-1).size);
+      return { align, left, right: 0, indent, wordBreak: n > 0 && sp === n, before: g.before, pct: pp, size: f.size, runs: toRuns(chars), _y0: y0, _y1: y1 };
     });
-    const first = ls[0], lastL = ls.at(-1);
-    const topGap = first.y - 0.85 * first.size - cell.y0;
-    const botGap = cell.y1 - (lastL.y + over(lastL.size));
+    if (cImgs.length) {
+      for (const im of cImgs) paras.push({ k: 'img', data: im.data, ext: im.ext, mime: im.mime, w: im.w, h: im.h, pxW: im.pxW, pxH: im.pxH, left: Math.max(0, im.x0 - innerL), before: 0, _y0: im.y0, _y1: im.y1 });
+      paras.sort((a, b) => a._y0 - b._y0);
+      paras.forEach((p, i) => { p.before = i ? Math.max(0, p._y0 - paras[i - 1]._y1) : 0; });
+    }
+    const topY = Math.min(ls[0].y - 0.85 * ls[0].size, ...cImgs.map(im => im.y0));
+    const botY = Math.max(ls.at(-1).y + over(ls.at(-1).size), ...cImgs.map(im => im.y1));
+    for (const p of paras) { delete p._y0; delete p._y1; }
+    const first = ls[0];
+    const topGap = topY - cell.y0;
+    const botGap = cell.y1 - botY;
     let vAlign = 'top', top = Math.max(0, Math.min(30, topGap)), bottom = 0.5;
     if (topGap > 2 && Math.abs(topGap - botGap) < Math.max(2, 0.25 * first.size)) { vAlign = 'center'; top = bottom = Math.max(0, Math.min(topGap, botGap)) * 0.5; }
     return { paras, mar: { top, bottom, left: padL, right: padR }, vAlign };

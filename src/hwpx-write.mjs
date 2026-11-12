@@ -173,6 +173,64 @@ export function buildHwpx(model, opts = {}) {
   let pid = 0;
   const nextId = () => String(++pid);
 
+  // ── 그림(바이너리) ──
+  const binItems = []; const binByBuf = new Map();
+  function addBin(data, ext = 'png', mime = 'image/png') {
+    if (!data) return null;
+    if (binByBuf.has(data)) return binByBuf.get(data);
+    const id = `image${binItems.length + 1}`;
+    const e = (ext || 'png').toLowerCase().replace(/^jpeg$/, 'jpg');
+    const m = mime || (e === 'jpg' ? 'image/jpeg' : e === 'gif' ? 'image/gif' : e === 'bmp' ? 'image/bmp' : 'image/png');
+    const item = { id, ext: e, mime: m, href: `BinData/${id}.${e}`, data };
+    binItems.push(item); binByBuf.set(data, item);
+    return item;
+  }
+  function picXml(im, posOpts = {}) {
+    const bin = addBin(im.data, im.ext, im.mime);
+    if (!bin) return '';
+    const w = Math.max(100, H(im.w || 200)), h = Math.max(100, H(im.h || 200));
+    const treatAsChar = posOpts.treatAsChar ?? (im.inline ? 1 : 0);
+    const textWrap = posOpts.textWrap ?? im.wrap ?? 'TOP_AND_BOTTOM';
+    const vertRelTo = posOpts.vertRelTo ?? im.vertRelTo ?? 'PARA';
+    const horzRelTo = posOpts.horzRelTo ?? im.horzRelTo ?? 'COLUMN';
+    const vertAlign = posOpts.vertAlign ?? im.vertAlign ?? 'TOP';
+    const horzAlign = posOpts.horzAlign ?? im.horzAlign ?? 'LEFT';
+    const vertOffset = posOpts.vertOffset ?? H(im.y || 0);
+    const horzOffset = posOpts.horzOffset ?? H(im.x || 0);
+    const flowWithText = posOpts.flowWithText ?? (vertRelTo === 'PAPER' || vertRelTo === 'PAGE' ? 0 : 1);
+    const allowOverlap = posOpts.allowOverlap ?? (textWrap === 'TOP_AND_BOTTOM' && !treatAsChar ? 0 : 1);
+    const outL = posOpts.outL ?? H(im.distL || 0), outR = posOpts.outR ?? H(im.distR || 0);
+    const outT = posOpts.outT ?? H(im.distT || 0), outB = posOpts.outB ?? H(im.distB || 0);
+    const dimW = (im.pxW || 0) * 75, dimH = (im.pxH || 0) * 75;
+    const clip = im.crop && dimW && dimH
+      ? `left="${Math.round((im.crop.l || 0) * dimW)}" right="${Math.round((1 - (im.crop.r || 0)) * dimW)}" top="${Math.round((im.crop.t || 0) * dimH)}" bottom="${Math.round((1 - (im.crop.b || 0)) * dimH)}"`
+      : 'left="0" right="0" top="0" bottom="0"';
+    const orgW = im.crop && (1 - (im.crop.l || 0) - (im.crop.r || 0)) > 0.01 ? Math.round(w / (1 - (im.crop.l || 0) - (im.crop.r || 0))) : w;
+    const orgH = im.crop && (1 - (im.crop.t || 0) - (im.crop.b || 0)) > 0.01 ? Math.round(h / (1 - (im.crop.t || 0) - (im.crop.b || 0))) : h;
+    const id = nextId(), inst = nextId();
+    return `<hp:pic id="${id}" zOrder="0" numberingType="PICTURE" textWrap="${textWrap}" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0" instid="${inst}" reverse="0">`
+      + `<hp:offset x="0" y="0"/><hp:orgSz width="${orgW}" height="${orgH}"/><hp:curSz width="0" height="0"/><hp:flip horizontal="0" vertical="0"/>`
+      + `<hp:rotationInfo angle="0" centerX="0" centerY="0" rotateimage="1"/>`
+      + `<hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo>`
+      + `<hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="${w}" y="0"/><hc:pt2 x="${w}" y="${h}"/><hc:pt3 x="0" y="${h}"/></hp:imgRect>`
+      + `<hp:imgClip ${clip}/><hp:inMargin left="0" right="0" top="0" bottom="0"/>`
+      + `<hc:img binaryItemIDRef="${bin.id}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/><hp:effects/>`
+      + `<hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/>`
+      + `<hp:pos treatAsChar="${treatAsChar}" affectLSpacing="0" flowWithText="${flowWithText}" allowOverlap="${allowOverlap}" holdAnchorAndSO="0" vertRelTo="${vertRelTo}" horzRelTo="${horzRelTo}" vertAlign="${vertAlign}" horzAlign="${horzAlign}" vertOffset="${vertOffset}" horzOffset="${horzOffset}"/>`
+      + `<hp:outMargin left="${outL}" right="${outR}" top="${outT}" bottom="${outB}"/><hp:shapeComment/></hp:pic>`;
+  }
+  function imgBlockXml(b, env) {
+    const hAlign = { center: 'CENTER', right: 'RIGHT', end: 'RIGHT' }[b.jc] ?? 'LEFT';
+    const x = picXml(b, {
+      treatAsChar: 0, textWrap: 'TOP_AND_BOTTOM', vertRelTo: 'PARA', horzRelTo: 'COLUMN',
+      vertAlign: 'TOP', horzAlign: hAlign, vertOffset: 0, horzOffset: hAlign === 'LEFT' ? H(Math.max(0, b.left || 0)) : 0,
+      outT: H(env.before || 0), outB: H(env.after || 0),
+    });
+    const holder = paraPr({ align: 'LEFT', intent: 0, left: 0, right: 0, prev: 0, next: 0, lineType: 'FIXED', lineValue: 100, tab: 0, keepWord: true, widow: false, keepNext: false, keepLines: false, pageBreakBefore: false, autoEng: false, autoNum: false, border: 2, bo: [0, 0, 0, 0], connect: false });
+    const cp = charPr(env.markR ?? {});
+    return `<hp:p id="${nextId()}" paraPrIDRef="${holder}" styleIDRef="0" pageBreak="${env.pageBreak ? 1 : 0}" columnBreak="0" merged="0">${env.lead || ''}<hp:run charPrIDRef="${cp}">${x}<hp:t/></hp:run></hp:p>`;
+  }
+
   function runXml(cp, inner) { return `<hp:run charPrIDRef="${cp}">${inner}</hp:run>`; }
 
   function paraXml(b, env) {
@@ -224,6 +282,7 @@ export function buildHwpx(model, opts = {}) {
     };
     items.forEach((it, ri) => {
       if (it.t === 'page') { flush(); curCp = null; flushPara(); pageBreak = true; return; }
+      if (it.t === 'img') { flush(); curCp = null; runs += runXml(charPr(it.rpr ?? firstR ?? {}), `${picXml(it)}<hp:t/>`); return; }
       if (it.t === 'tab') { put(charPr(it.rpr ?? firstR), '<hp:tab width="0" leader="0" type="1"/>'); return; }
       if (it.t === 'br') { put(charPr(it.rpr ?? firstR), '<hp:lineBreak/>'); return; }
       const r = it.rpr; const base = charPr(r);
@@ -366,7 +425,7 @@ export function buildHwpx(model, opts = {}) {
       for (let i = 1; i < n; i++) if (blocks[i].k === 'p' && blocks[i - 1].k === 'p') { bef[i] = Math.max(bef[i], aft[i - 1]); aft[i - 1] = 0; }
     }
     // 한글 문단 테두리·배경은 문단 위·아래 간격까지 감싼다(워드는 글자 부분만) → 상자 바깥 간격은 이웃 문단(또는 표)으로 넘긴다
-    const tBef = blocks.map(b => (b.k === 'tbl' ? b.before || 0 : 0)), tAft = new Array(n).fill(0);   // 표 앞 간격(표에 직접 준 값)
+    const tBef = blocks.map(b => ((b.k === 'tbl' || b.k === 'img') ? b.before || 0 : 0)), tAft = new Array(n).fill(0);   // 표·그림 앞 간격
     const boxed = b => b?.k === 'p' && (!!b.ppr.shade || Object.values(b.ppr.borders || {}).some(x => x && x.type && x.type !== 'none'));
     for (let i = 0; i < n; i++) {
       if (!boxed(blocks[i])) continue;
@@ -403,9 +462,9 @@ export function buildHwpx(model, opts = {}) {
       }
       lastS = prevS;
     }
-    // 표 다음 문단의 위 간격은 한글에서 표에 밀려 사라진다 → 표 바깥 아래 여백으로 옮긴다. 표 앞 문단의 아래 간격도 표를 붙든 문단 위 간격으로.
+    // 표·그림 다음 문단의 위 간격은 한글에서 표·그림에 밀려 사라진다 → 바깥 아래 여백으로 옮긴다. 앞 문단의 아래 간격도 표·그림을 붙든 문단 위 간격으로.
     for (let i = 0; i < n; i++) {
-      if (blocks[i].k !== 'tbl') continue;
+      if (blocks[i].k !== 'tbl' && blocks[i].k !== 'img') continue;
       if (i + 1 < n && blocks[i + 1].k === 'p') { tAft[i] += Math.max(0, bef[i + 1]); bef[i + 1] = 0; }
     }
     // 칸 안 마지막 문단: 워드는 마지막 줄도 줄 높이 전체를 쓰고, 한글은 글자 높이만 쓴다. 한글은 칸 맨 끝 문단의 아래 간격도 무시하므로
@@ -420,8 +479,10 @@ export function buildHwpx(model, opts = {}) {
     }
     let out = '';
     blocks.forEach((b, i) => {
-      const lead = i === 0 ? env.lead : undefined;
+      const floatXml = (b.floats || []).map(fl => picXml(fl, { treatAsChar: 0, textWrap: fl.behind ? 'BEHIND_TEXT' : 'IN_FRONT_OF_TEXT', vertRelTo: 'PAPER', horzRelTo: 'PAPER', vertAlign: 'TOP', horzAlign: 'LEFT', vertOffset: H(fl.y || 0), horzOffset: H(fl.x || 0), flowWithText: 0, allowOverlap: 1 })).join('');
+      const lead = (i === 0 ? env.lead || '' : '') + (floatXml ? `<hp:run charPrIDRef="0">${floatXml}</hp:run>` : '') || undefined;
       if (b.k === 'tbl') { out += tableXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
+      if (b.k === 'img') { out += imgBlockXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
       out += paraXml(b, { lead, before: bef[i], after: aft[i] });
     });
     return out;
@@ -468,7 +529,7 @@ export function buildHwpx(model, opts = {}) {
   const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const secIds = sectionFiles.map((_, i) => `section${i}`);
   const hpf = HPF_OPEN + `<opf:metadata><opf:title/><opf:language>ko</opf:language><opf:meta name="creator" content="text">hwp2docx</opf:meta><opf:meta name="subject" content="text"/><opf:meta name="description" content="text"/><opf:meta name="lastsaveby" content="text">hwp2docx</opf:meta><opf:meta name="CreatedDate" content="text">${now}</opf:meta><opf:meta name="ModifiedDate" content="text">${now}</opf:meta><opf:meta name="date" content="text"/><opf:meta name="keyword" content="text"/></opf:metadata>`
-    + `<opf:manifest><opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>${secIds.map(id => `<opf:item id="${id}" href="Contents/${id}.xml" media-type="application/xml"/>`).join('')}<opf:item id="settings" href="settings.xml" media-type="application/xml"/></opf:manifest>`
+    + `<opf:manifest><opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>${secIds.map(id => `<opf:item id="${id}" href="Contents/${id}.xml" media-type="application/xml"/>`).join('')}<opf:item id="settings" href="settings.xml" media-type="application/xml"/>${binItems.map(b => `<opf:item id="${b.id}" href="${b.href}" media-type="${b.mime}" isEmbeded="1"/>`).join('')}</opf:manifest>`
     + `<opf:spine><opf:itemref idref="header" linear="yes"/>${secIds.map(id => `<opf:itemref idref="${id}" linear="yes"/>`).join('')}</opf:spine></opf:package>`;
   const rdf = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
     + ['header', ...secIds].map(id => { const f = `Contents/${id}.xml`, t = id === 'header' ? 'HeaderFile' : 'SectionFile'; return `<rdf:Description rdf:about=""><ns0:hasPart xmlns:ns0="http://www.hancom.co.kr/hwpml/2016/meta/pkg#" rdf:resource="${f}"/></rdf:Description><rdf:Description rdf:about="${f}"><rdf:type rdf:resource="http://www.hancom.co.kr/hwpml/2016/meta/pkg#${t}"/></rdf:Description>`; }).join('')
@@ -482,6 +543,7 @@ export function buildHwpx(model, opts = {}) {
     'Contents/header.xml': strToU8(header),
   };
   sectionFiles.forEach((s, i) => { files[`Contents/section${i}.xml`] = strToU8(s); });
+  for (const b of binItems) files[b.href] = b.data;
   Object.assign(files, {
     'Preview/PrvText.txt': strToU8(preview),
     'settings.xml': strToU8(settings),

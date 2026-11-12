@@ -89,15 +89,16 @@ export function buildDocx(doc, opts = {}) {
       //  · 앞이나 뒤가 한글(동아시아 글자)인 빈칸: 한글 글자 폭의 절반(함초롬 0.485, 나눔스퀘어 0.455 …). 이 빈칸에 준 글자 간격은 두 배로 적용된다.
       //  · 앞뒤가 모두 영문·숫자·문장부호인 빈칸: 글꼴에 들어 있는 빈칸 폭(함초롬 0.3 …). 글자 간격은 준 만큼만 적용된다.
       // 모자라는 만큼 빈칸 뒤 간격으로 보탠다. 워드가 아닌 프로그램은 항상 글꼴의 빈칸 폭을 쓴다(target:'libreoffice').
+      const targetSpace = cs.spaceEm ?? HWP_SPACE;
       const jagan = sizeHu / 100 * cs.spacing[lang] / 100 * 20;
       const scale = sizeHu / 100 * cs.ratio[lang] / 100 * 20;
       const fontSpace = SPACE_ADVANCE[font] ?? SPACE_ADVANCE_GUESS[font];
       if (opts.target === 'libreoffice' || isSpace === 'latin') {
         if (fontSpace == null) note(`글꼴 '${font}'의 띄어쓰기 폭을 몰라 영문·숫자 사이 빈칸은 보정하지 않음`);
-        else sp = Math.round(jagan + scale * (HWP_SPACE - fontSpace));
+        else sp = Math.round(jagan + scale * (targetSpace - fontSpace));
       } else {
         // 두 배로 적용되므로 절반만 준다.
-        sp = Math.round((jagan + scale * (HWP_SPACE - (HANGUL_ADVANCE[font] ?? 1) / 2)) / 2);
+        sp = Math.round((jagan + scale * (targetSpace - (HANGUL_ADVANCE[font] ?? 1) / 2)) / 2);
       }
     }
     if (sp) x += `<w:spacing w:val="${sp}"/>`;
@@ -413,21 +414,22 @@ export function buildDocx(doc, opts = {}) {
       }
       const texts = [];           // 아직 문단으로 내보내지 않은 글자들
       const tables = [];
-      let emittedText = false;
+      let emittedText = false, inlinePicH = 0;
       const head = headText(ps);
       if (head) texts.push({ t: 'text', text: head, cs: para.items.find(i => i.t === 'text')?.cs ?? para.endCharShape });
 
       const emitPara = (extra = {}) => {
         const { xml, maxSize } = runsXml(texts);
         const endSize = markRpr(para.endCharShape).sizeHu;
-        const line = lineHeightOf(para, ps, maxSize || endSize, !extra.noSegs);
+        let line = lineHeightOf(para, ps, maxSize || endSize, !extra.noSegs);
+        if (inlinePicH > 0 && line.rule === 'exact' && line.v < inlinePicH) line = { v: inlinePicH, rule: 'atLeast' };
         blocks.push({
           k: 'p', ps, runs: xml, mark: markRpr(texts.length ? (texts[texts.length - 1].cs ?? para.endCharShape) : para.endCharShape).xml,
           before: ps.before, after: ps.after, line, pageBreakBefore: forceBreak, textWidth: env.width,
           lines: para.lineSegs.length || 1, keepNext: !!env.keepNext, base: para.lineSegs[0]?.baseline,
           textH: para.lineSegs[0]?.height ?? (maxSize || endSize),
         });
-        forceBreak = false; texts.length = 0; emittedText = true;
+        forceBreak = false; texts.length = 0; emittedText = true; inlinePicH = 0;
       };
 
       let textDone = false;
@@ -441,9 +443,40 @@ export function buildDocx(doc, opts = {}) {
           case 'head': state.section?.headers.push(c); break;
           case 'foot': state.section?.footers.push(c); break;
           case 'tbl ': tables.push(c); break;
+          case 'pic ':
+            if (c.data) {
+              const jcP = ALIGN[ps.align] === 'center' ? 'center' : ALIGN[ps.align] === 'right' ? 'right' : 'left';
+              const segP = para.lineSegs[0];
+              const hostHasText = para.items.some(i => i.t === 'text' || i.t === 'tab');
+              if (c.inline && !hostHasText) {
+                if (forceBreak) { blocks.push({ k: 'raw', xml: spacerXml(20, '<w:pageBreakBefore/>') }); forceBreak = false; }
+                blocks.push({ k: 'gap', h: ps.before + (c.marginTop || 0) });
+                blocks.push({ k: 'img', xml: blockPicXml(c, { jc: jcP, indent: ps.left + (c.marginLeft || 0) }) });
+                blocks.push({ k: 'gap', h: (c.marginBottom || 0) + (segP ? segP.gap : 0) + ps.after });
+                emittedText = true;
+              } else if (c.inline) {
+                texts.push({ t: 'raw', xml: inlinePicRunXml(c) });
+                inlinePicH = Math.max(inlinePicH, c.height || 0);
+              } else if (c.wrap === 1 && !hostHasText) {
+                const hAl = c.horzAlign === 1 ? 'center' : c.horzAlign === 2 ? 'right' : 'left';
+                if (forceBreak) { blocks.push({ k: 'raw', xml: spacerXml(20, '<w:pageBreakBefore/>') }); forceBreak = false; }
+                blocks.push({ k: 'gap', h: ps.before + (c.y || 0) + (c.marginTop || 0) });
+                blocks.push({ k: 'img', xml: blockPicXml(c, { jc: hAl, indent: (c.x || 0) + (c.marginLeft || 0) }) });
+                blocks.push({ k: 'gap', h: c.marginBottom || 0 });
+                emittedText = true;
+              } else {
+                texts.push({ t: 'raw', xml: anchorPicRunXml(c, ps) });
+              }
+            }
+            break;
           case 'gso ':
-            note('그리기 개체·글상자·그림은 아직 옮기지 못함 (글상자 안의 글만 본문으로 옮김)');
-            if (c.paras?.length) { if (texts.length) emitPara(); blocks.push(...convertParas(c.paras, env)); }
+            if (c.data) {
+              texts.push({ t: 'raw', xml: c.inline ? inlinePicRunXml(c) : anchorPicRunXml(c, ps) });
+              if (c.inline) inlinePicH = Math.max(inlinePicH, c.height || 0);
+            } else {
+              note('그리기 개체·글상자·그림은 아직 옮기지 못함 (글상자 안의 글만 본문으로 옮김)');
+              if (c.paras?.length) { if (texts.length) emitPara(); blocks.push(...convertParas(c.paras, env)); }
+            }
             break;
           case 'fn  ': case 'en  ': note('각주·미주는 아직 옮기지 못함'); break;
           case 'atno': texts.push({ t: 'text', text: String(c.number || ''), cs: it.cs }); note('자동 번호(표·그림 번호)는 일반 숫자로 바꿔 넣음'); break;
@@ -508,7 +541,52 @@ export function buildDocx(doc, opts = {}) {
     return blocks;
   }
 
-  let drawingId = 1;
+  let drawingId = 1, relId = 10;
+  const media = [], mediaByBuf = new Map();
+  function addMedia(data, ext = 'png') {
+    if (!data) return null;
+    if (mediaByBuf.has(data)) return mediaByBuf.get(data);
+    const e = (ext || 'png').toLowerCase().replace(/^jpeg$/, 'jpg');
+    const id = `rId${relId++}`;
+    const target = `media/image${media.length + 1}.${e}`;
+    const item = { id, ext: e, target, data };
+    media.push(item); mediaByBuf.set(data, item);
+    rels.push({ id, type: 'image', target, isMedia: true });
+    return item;
+  }
+  function picGraphicXml(id, rId, cx, cy, crop) {
+    const srcRect = crop && (crop.l || crop.t || crop.r || crop.b)
+      ? `<a:srcRect l="${Math.round((crop.l || 0) * 100000)}" t="${Math.round((crop.t || 0) * 100000)}" r="${Math.round((crop.r || 0) * 100000)}" b="${Math.round((crop.b || 0) * 100000)}"/>`
+      : '';
+    return `<wp:docPr id="${id}" name="Picture ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="Picture ${id}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/>${srcRect}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>`;
+  }
+  function inlinePicRunXml(c) {
+    const m = addMedia(c.data, c.ext);
+    if (!m) return '';
+    const EMU = 127;
+    const id = drawingId++, cx = Math.max(1270, Math.round((c.width || 2000) * EMU)), cy = Math.max(1270, Math.round((c.height || 2000) * EMU));
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>${picGraphicXml(id, m.id, cx, cy, c.crop)}</wp:inline></w:drawing></w:r>`;
+  }
+  function anchorPicRunXml(c, ps) {
+    const m = addMedia(c.data, c.ext);
+    if (!m) return '';
+    const EMU = 127;
+    const id = drawingId++;
+    const relH = ['page', 'margin', 'column', 'column'][c.horzRel] ?? 'column';
+    const relV = ['page', 'margin', 'paragraph'][c.vertRel] ?? 'paragraph';
+    const x = Math.round(((c.x || 0) + (c.marginLeft || 0) + (c.horzRel === 3 ? (ps?.left || 0) : 0)) * EMU);
+    const y = Math.round(((c.y || 0) + (c.marginTop || 0)) * EMU);
+    const cx = Math.max(1270, Math.round((c.width || 2000) * EMU)), cy = Math.max(1270, Math.round((c.height || 2000) * EMU));
+    const wrapXml = c.wrap === 1 ? '<wp:wrapTopAndBottom/>' : c.wrap === 0 ? '<wp:wrapSquare wrapText="bothSides"/>' : '<wp:wrapNone/>';
+    const dT = Math.max(0, Math.round((c.marginTop || 0) * EMU)), dB = Math.max(0, Math.round((c.marginBottom || 0) * EMU));
+    const dL = Math.max(0, Math.round((c.marginLeft || 0) * EMU)), dR = Math.max(0, Math.round((c.marginRight || 0) * EMU));
+    return `<w:r><w:drawing><wp:anchor distT="${dT}" distB="${dB}" distL="${dL}" distR="${dR}" simplePos="0" relativeHeight="${251658240 + id}" behindDoc="${c.wrap === 2 ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="${relH}"><wp:posOffset>${x}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="${relV}"><wp:posOffset>${y}</wp:posOffset></wp:positionV><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>${wrapXml}${picGraphicXml(id, m.id, cx, cy, c.crop)}</wp:anchor></w:drawing></w:r>`;
+  }
+  function blockPicXml(c, place) {
+    const ind = place.indent ? `<w:ind w:left="${tw(place.indent)}" w:right="0" w:firstLine="0"/>` : '';
+    const jc = place.jc && place.jc !== 'left' ? `<w:jc w:val="${place.jc}"/>` : '';
+    return `<w:p><w:pPr><w:widowControl w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>${ind}${jc}<w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr>${inlinePicRunXml(c)}</w:p>`;
+  }
   function textBoxXml(c, ps, env) {
     const EMU = 127;       // 1 HWPUNIT = 127 EMU
     const id = drawingId++;
@@ -527,7 +605,7 @@ export function buildDocx(doc, opts = {}) {
   let sectionTopShift = 0;
   function alignBaselines(out) {
     const sOf = (b) => (b.k === 'p' && b.line.rule === 'exact' && b.base != null) ? 0.8 * b.line.v - b.base : 0;
-    const seq = out.filter(b => b.k === 'p' || b.k === 'tbl');
+    const seq = out.filter(b => b.k === 'p' || b.k === 'tbl' || b.k === 'img');
     const paras = seq.filter(b => b.k === 'p' && b.line.rule === 'exact' && b.base != null);
     if (!paras.length) { sectionTopShift = 0; return; }
     // 위쪽 여백은 본문에서 가장 많이 쓰인 문단 모양의 s만큼 줄인다 (줄 수로 가중). 표지의 큰 제목 한 줄에 끌려가지 않게.
@@ -539,8 +617,8 @@ export function buildDocx(doc, opts = {}) {
     let prevS = s0, debt = 0, prevP = null;
     for (let i = 0; i < seq.length; i++) {
       const b = seq[i];
-      if (b.k === 'tbl') {
-        // 표는 내려가지 않으므로, 앞 문단이 올라간 만큼 표 앞을 띄우고 그만큼을 표 뒤 문단의 간격에서 뺀다. 뺄 간격이 없으면 건드리지 않는다.
+      if (b.k === 'tbl' || b.k === 'img') {
+        // 표·그림은 내려가지 않으므로, 앞 문단이 올라간 만큼 앞을 띄우고 그만큼을 뒤 문단의 간격에서 뺀다. 뺄 간격이 없으면 건드리지 않는다.
         const next = seq[i + 1];
         if (prevP && next && next.k === 'p' && !next.pageBreakBefore) {
           const pay = Math.max(0, Math.min(prevS, next.before));
@@ -568,10 +646,10 @@ export function buildDocx(doc, opts = {}) {
         if (pendingGap >= 10) b.before += pendingGap;
         pendingGap = 0; out.push(b);
       } else if (b.k === 'raw') { out.push(b); }
-      else {   // 표
+      else {   // 표 또는 블록 그림
         const prev = out[out.length - 1];
         if (prev && prev.k === 'p') { if (pendingGap >= 10) prev.after += pendingGap; }
-        else if (prev && prev.k === 'tbl') out.push({ k: 'raw', xml: spacerXml(pendingGap) });       // 표가 연달아 오면 워드가 하나로 합치므로 사이를 띄운다
+        else if (prev && prev.k === 'tbl' && b.k === 'tbl') out.push({ k: 'raw', xml: spacerXml(pendingGap) });       // 표가 연달아 오면 워드가 하나로 합치므로 사이를 띄운다
         else if (pendingGap >= 20) out.push({ k: 'raw', xml: spacerXml(pendingGap) });
         pendingGap = 0; out.push(b);
       }
@@ -584,7 +662,6 @@ export function buildDocx(doc, opts = {}) {
   }
 
   // ── 구역(쪽 설정, 머리말·꼬리말, 쪽 번호) ─────────────────────────
-  let relId = 10;
   function hfPart(kind, paras, pageNum, sec) {
     const id = `rId${relId++}`; const file = `${kind}${Object.keys(parts).length + 1}.xml`;
     let body = '';
@@ -647,7 +724,7 @@ export function buildDocx(doc, opts = {}) {
     const sp = sectPrXml(sec);
     const isLast = si === doc.sections.length - 1;
     if (!isLast) {
-      let lastP = null; for (let i = blocks.length - 1; i >= 0; i--) { if (blocks[i].k === 'p') { lastP = blocks[i]; break; } if (blocks[i].k === 'tbl') break; }
+      let lastP = null; for (let i = blocks.length - 1; i >= 0; i--) { if (blocks[i].k === 'p') { lastP = blocks[i]; break; } if (blocks[i].k === 'tbl' || blocks[i].k === 'img') break; }
       if (lastP) lastP.sectPr = sp; else blocks.push({ k: 'raw', xml: `<w:p><w:pPr>${sp}</w:pPr></w:p>` });
     }
     body += blocks.map(b => b.k === 'p' ? pXml(b) : b.xml).join('');
@@ -655,11 +732,14 @@ export function buildDocx(doc, opts = {}) {
     if (sec.defaultTab) state.defaultTab = sec.defaultTab;
   });
 
-  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
   const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   const base = doc.styles[0] ? rPr(doc.styles[0].charShape, 0) : rPr(0, 0);
+  const mediaExts = new Map();
+  for (const m of media) mediaExts.set(m.ext, m.mime);
+  const mediaDefaults = [...mediaExts].map(([ext, mime]) => `<Default Extension="${ext}" ContentType="${mime}"/>`).join('');
   const files = {
-    '[Content_Types].xml': `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${rels.map(r => `<Override PartName="/word/${r.target}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${r.type}+xml"/>`).join('')}</Types>`,
+    '[Content_Types].xml': `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaDefaults}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${rels.filter(r => !r.isMedia).map(r => `<Override PartName="/word/${r.target}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${r.type}+xml"/>`).join('')}</Types>`,
     '_rels/.rels': `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
     'word/_rels/document.xml.rels': `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>${rels.map(r => `<Relationship Id="${r.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`,
     'word/document.xml': `${XML}<w:document ${NS}><w:body>${body}</w:body></w:document>`,
@@ -667,7 +747,8 @@ export function buildDocx(doc, opts = {}) {
     'word/settings.xml': `${XML}<w:settings ${NS}><w:zoom w:percent="100"/><w:defaultTabStop w:val="${tw((state.defaultTab ?? 8000) / 2)}"/><w:noPunctuationKerning/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:useFELayout/><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/><w:compatSetting w:name="overrideTableStyleFontSizeAndJustification" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/><w:compatSetting w:name="enableOpenTypeFeatures" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/><w:compatSetting w:name="doNotFlipMirrorIndents" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/></w:compat></w:settings>`,
   };
   for (const [name, xml] of Object.entries(parts)) files['word/' + name] = xml;
-  const zipped = zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])), { level: 6 });
+  for (const m of media) files['word/' + m.target] = m.data;
+  const zipped = zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v instanceof Uint8Array ? v : strToU8(v)])), { level: 6 });
   return {
     docx: zipped,
     report: {

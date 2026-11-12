@@ -3,6 +3,7 @@
 // 사용: node cli-pdf.mjs 입력.pdf [출력이름(확장자 없이)] [--docx] [--for-libreoffice]
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { pdfToHwpx, pdfToDocx } from './src/pdf-convert.mjs';
 const args = process.argv.slice(2);
@@ -10,7 +11,7 @@ const files = args.filter(a => !a.startsWith('--'));
 if (!files[0]) { console.error('사용: node cli-pdf.mjs 입력.pdf [출력이름] [--docx] [--for-libreoffice]'); process.exit(1); }
 const out = files[1] ?? files[0].replace(/\.pdf$/i, '');
 const bytes = new Uint8Array(fs.readFileSync(files[0]));
-const cMapUrl = path.join(path.dirname(new URL(import.meta.url).pathname), 'node_modules/pdfjs-dist/cmaps/');
+const cMapUrl = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules/pdfjs-dist/cmaps/');
 try {
   const r = args.includes('--docx')
     ? await pdfToDocx(bytes, pdfjs, { cMapUrl, target: args.includes('--for-libreoffice') ? 'libreoffice' : 'word' })
