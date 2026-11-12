@@ -478,6 +478,12 @@ export function buildDocx(doc, opts = {}) {
               if (c.paras?.length) { if (texts.length) emitPara(); blocks.push(...convertParas(c.paras, env)); }
             }
             break;
+          case 'line':
+            texts.push({ t: 'raw', xml: vmlLineRunXml(c) });
+            break;
+          case 'rect':
+            texts.push({ t: 'raw', xml: vmlRectRunXml(c) });
+            break;
           case 'fn  ': case 'en  ': note('각주·미주는 아직 옮기지 못함'); break;
           case 'atno': texts.push({ t: 'text', text: String(c.number || ''), cs: it.cs }); note('자동 번호(표·그림 번호)는 일반 숫자로 바꿔 넣음'); break;
           default: break;      // 책갈피·계산식 등: 화면에 보이는 값은 이미 글자로 들어 있다
@@ -586,6 +592,25 @@ export function buildDocx(doc, opts = {}) {
     const ind = place.indent ? `<w:ind w:left="${tw(place.indent)}" w:right="0" w:firstLine="0"/>` : '';
     const jc = place.jc && place.jc !== 'left' ? `<w:jc w:val="${place.jc}"/>` : '';
     return `<w:p><w:pPr><w:widowControl w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>${ind}${jc}<w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr>${inlinePicRunXml(c)}</w:p>`;
+  }
+  function vmlLineRunXml(c) {
+    const id = drawingId++;
+    const x1 = ((c.x1 || 0) / 100).toFixed(2), y1 = ((c.y1 || 0) / 100).toFixed(2);
+    const x2 = ((c.x2 || 0) / 100).toFixed(2), y2 = ((c.y2 || 0) / 100).toFixed(2);
+    const w = Math.max(0.25, (c.w || 75) / 100).toFixed(2);
+    return `<w:r><w:pict><v:line id="_x0000_s${1025 + id}" style="position:absolute;z-index:${251658240 + id};mso-position-horizontal-relative:page;mso-position-vertical-relative:page" from="${x1}pt,${y1}pt" to="${x2}pt,${y2}pt" strokecolor="#${c.color || '000000'}" strokeweight="${w}pt"/></w:pict></w:r>`;
+  }
+  function vmlRectRunXml(c) {
+    const id = drawingId++;
+    const x = ((c.x || 0) / 100).toFixed(2), y = ((c.y || 0) / 100).toFixed(2);
+    const w = Math.max(1, (c.width || 1000) / 100).toFixed(2), h = Math.max(1, (c.height || 1000) / 100).toFixed(2);
+    const z = c.behind === false ? 251658240 + id : -(251658240 + id);
+    const st = c.stroke && c.stroke.w > 0 ? c.stroke : null;
+    const strokeAttr = st ? `stroked="t" strokecolor="#${st.color || '000000'}" strokeweight="${Math.max(0.25, st.w / 100).toFixed(2)}pt"` : 'stroked="f"';
+    const fillAttr = c.fill ? `filled="t" fillcolor="#${c.fill}"` : 'filled="f"';
+    const tag = c.ratio > 0 ? 'v:roundrect' : 'v:rect';
+    const arc = c.ratio > 0 ? ` arcsize="${(c.ratio / 100).toFixed(2)}"` : '';
+    return `<w:r><w:pict><${tag} id="_x0000_s${1025 + id}"${arc} style="position:absolute;margin-left:${x}pt;margin-top:${y}pt;width:${w}pt;height:${h}pt;z-index:${z};mso-position-horizontal-relative:page;mso-position-vertical-relative:page" ${fillAttr} ${strokeAttr}/></w:pict></w:r>`;
   }
   function textBoxXml(c, ps, env) {
     const EMU = 127;       // 1 HWPUNIT = 127 EMU
@@ -732,7 +757,7 @@ export function buildDocx(doc, opts = {}) {
     if (sec.defaultTab) state.defaultTab = sec.defaultTab;
   });
 
-  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word"';
   const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   const base = doc.styles[0] ? rPr(doc.styles[0].charShape, 0) : rPr(0, 0);
   const mediaExts = new Map();

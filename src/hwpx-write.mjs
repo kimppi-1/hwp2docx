@@ -219,6 +219,44 @@ export function buildHwpx(model, opts = {}) {
       + `<hp:pos treatAsChar="${treatAsChar}" affectLSpacing="0" flowWithText="${flowWithText}" allowOverlap="${allowOverlap}" holdAnchorAndSO="0" vertRelTo="${vertRelTo}" horzRelTo="${horzRelTo}" vertAlign="${vertAlign}" horzAlign="${horzAlign}" vertOffset="${vertOffset}" horzOffset="${horzOffset}"/>`
       + `<hp:outMargin left="${outL}" right="${outR}" top="${outT}" bottom="${outB}"/><hp:shapeComment/></hp:pic>`;
   }
+  function lineShapeXml(fl) {
+    const x0 = Math.min(fl.x1, fl.x2), y0 = Math.min(fl.y1, fl.y2);
+    const dx = Math.round(Math.abs(fl.x2 - fl.x1)), dy = Math.round(Math.abs(fl.y2 - fl.y1));
+    const lw = Math.max(28, H(fl.w || 15));
+    const w = Math.max(100, H(dx)), h = Math.max(100, H(dy));
+    const sx = fl.x1 <= fl.x2 ? 0 : H(dx), sy = fl.y1 <= fl.y2 ? 0 : H(dy);
+    const ex = fl.x2 >= fl.x1 ? H(dx) : 0, ey = fl.y2 >= fl.y1 ? H(dy) : 0;
+    const rev = (fl.x1 > fl.x2) !== (fl.y1 > fl.y2) ? 1 : 0;
+    const id = nextId(), inst = nextId();
+    return `<hp:line id="${id}" zOrder="0" numberingType="PICTURE" textWrap="IN_FRONT_OF_TEXT" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0" instid="${inst}" isReverseHV="${rev}">`
+      + `<hp:offset x="0" y="0"/><hp:orgSz width="${w}" height="${h}"/><hp:curSz width="${w}" height="${h}"/><hp:flip horizontal="0" vertical="0"/>`
+      + `<hp:rotationInfo angle="0" centerX="${Math.round(w / 2)}" centerY="${Math.round(h / 2)}" rotateimage="1"/>`
+      + `<hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo>`
+      + `<hp:lineShape color="#${fl.color || '000000'}" width="${lw}" style="SOLID" endCap="FLAT" headStyle="NORMAL" tailStyle="NORMAL" headfill="1" tailfill="1" headSz="SMALL_SMALL" tailSz="SMALL_SMALL" outlineStyle="NORMAL" alpha="0"/>`
+      + `<hc:fillBrush><hc:winBrush faceColor="#FFFFFF" hatchColor="#000000" alpha="0"/></hc:fillBrush>`
+      + `<hp:shadow type="NONE" color="#B2B2B2" offsetX="0" offsetY="0" alpha="0"/>`
+      + `<hc:startPt x="${sx}" y="${sy}"/><hc:endPt x="${ex}" y="${ey}"/>`
+      + `<hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/>`
+      + `<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" holdAnchorAndSO="0" vertRelTo="PAPER" horzRelTo="PAPER" vertAlign="TOP" horzAlign="LEFT" vertOffset="${H(y0)}" horzOffset="${H(x0)}"/>`
+      + `<hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:line>`;
+  }
+  function rectShapeXml(fl) {
+    const w = Math.max(100, H(fl.w || 200)), h = Math.max(100, H(fl.h || 200));
+    const st = fl.stroke && fl.stroke.w > 0 ? fl.stroke : null;
+    const lw = st ? Math.max(28, H(st.w)) : 0;
+    const id = nextId(), inst = nextId();
+    return `<hp:rect id="${id}" zOrder="0" numberingType="PICTURE" textWrap="${fl.behind === false ? 'IN_FRONT_OF_TEXT' : 'BEHIND_TEXT'}" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0" instid="${inst}" ratio="${fl.ratio || 0}">`
+      + `<hp:offset x="0" y="0"/><hp:orgSz width="${w}" height="${h}"/><hp:curSz width="${w}" height="${h}"/><hp:flip horizontal="0" vertical="0"/>`
+      + `<hp:rotationInfo angle="0" centerX="${Math.round(w / 2)}" centerY="${Math.round(h / 2)}" rotateimage="1"/>`
+      + `<hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo>`
+      + `<hp:lineShape color="#${st ? (st.color || '000000') : '000000'}" width="${lw}" style="${st ? 'SOLID' : 'NONE'}" endCap="FLAT" headStyle="NORMAL" tailStyle="NORMAL" headfill="1" tailfill="1" headSz="SMALL_SMALL" tailSz="SMALL_SMALL" outlineStyle="NORMAL" alpha="0"/>`
+      + (fl.fill ? `<hc:fillBrush><hc:winBrush faceColor="#${fl.fill}" hatchColor="#000000" alpha="0"/></hc:fillBrush>` : '<hc:fillBrush/>')
+      + `<hp:shadow type="NONE" color="#B2B2B2" offsetX="0" offsetY="0" alpha="0"/>`
+      + `<hc:pt0 x="0" y="0"/><hc:pt1 x="${w}" y="0"/><hc:pt2 x="${w}" y="${h}"/><hc:pt3 x="0" y="${h}"/>`
+      + `<hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/>`
+      + `<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" holdAnchorAndSO="0" vertRelTo="PAPER" horzRelTo="PAPER" vertAlign="TOP" horzAlign="LEFT" vertOffset="${H(fl.y || 0)}" horzOffset="${H(fl.x || 0)}"/>`
+      + `<hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:rect>`;
+  }
   function imgBlockXml(b, env) {
     const hAlign = { center: 'CENTER', right: 'RIGHT', end: 'RIGHT' }[b.jc] ?? 'LEFT';
     const x = picXml(b, {
@@ -479,7 +517,7 @@ export function buildHwpx(model, opts = {}) {
     }
     let out = '';
     blocks.forEach((b, i) => {
-      const floatXml = (b.floats || []).map(fl => picXml(fl, { treatAsChar: 0, textWrap: fl.behind ? 'BEHIND_TEXT' : 'IN_FRONT_OF_TEXT', vertRelTo: 'PAPER', horzRelTo: 'PAPER', vertAlign: 'TOP', horzAlign: 'LEFT', vertOffset: H(fl.y || 0), horzOffset: H(fl.x || 0), flowWithText: 0, allowOverlap: 1 })).join('');
+      const floatXml = (b.floats || []).map(fl => fl.type === 'line' ? lineShapeXml(fl) : fl.type === 'rect' ? rectShapeXml(fl) : picXml(fl, { treatAsChar: 0, textWrap: fl.behind ? 'BEHIND_TEXT' : 'IN_FRONT_OF_TEXT', vertRelTo: 'PAPER', horzRelTo: 'PAPER', vertAlign: 'TOP', horzAlign: 'LEFT', vertOffset: H(fl.y || 0), horzOffset: H(fl.x || 0), flowWithText: 0, allowOverlap: 1 })).join('');
       const lead = (i === 0 ? env.lead || '' : '') + (floatXml ? `<hp:run charPrIDRef="0">${floatXml}</hp:run>` : '') || undefined;
       if (b.k === 'tbl') { out += tableXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
       if (b.k === 'img') { out += imgBlockXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }

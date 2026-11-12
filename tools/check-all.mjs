@@ -84,7 +84,7 @@ for (const j of jobs) {
     const [, pa, pb, la, lb, same, pct, col] = m1;
     const dy = m2 ? `${m2[1]} / ${m2[2]}pt` : '-';
     const dx = m2 ? `${m2[3]} / ${m2[4]}pt` : '-';
-    const im = m3 ? (m3[4] ? `${m3[1]}/${m3[2]} (${m3[4]}/${m3[5]}pt)` : `${m3[1]}/${m3[2]}`) : '-';
+    const im = m3 ? (m3[4] ? `${m3[1]}/${m3[2]} (${m3[4]}/${m3[5]}pt)` : m3[1] === '0' ? `도형→그림 ${m3[2]}` : `${m3[1]}/${m3[2]}`) : '-';
     console.log(`| ${j.kind} | ${j.name} | ${pa} / ${pb} | ${la} / ${lb} | ${same} (${pct}%) | ${col}/${same} | ${dy} | ${dx} | ${im} |`);
   } else {
     console.log(`| ${j.kind} | ${j.name} | ${out.replace(/\r?\n/g, ' ')} |`);

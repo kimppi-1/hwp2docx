@@ -1,7 +1,7 @@
 // PDF → 문단 모델 (글자 위치·크기·색·굵기를 읽어 문단과 쪽 설정을 되살린다)
 // pdf.js(pdfjs-dist)는 밖에서 넘겨받는다: readPdf(bytes, pdfjs)
 import { zlibSync } from 'fflate';
-import { extractGraphics, detectTables, buildGrid } from './pdf-tables.mjs';
+import { extractGraphics, detectTables, buildGrid, mergeSegs } from './pdf-tables.mjs';
 // 단위: pt. 결과의 쪽 설정·여백·간격도 pt.
 
 const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
@@ -72,6 +72,106 @@ function objToPng(obj, fillHex = null) {
     data = ctx.getImageData(0, 0, w, h).data; kind = 3;
   }
   return encodePng(w, h, kind ?? 1, data, fillHex);
+}
+
+// 복잡한 벡터 도형 묶음을 투명 배경 PNG로 래스터화 (브라우저·Node 공용 순수 JS 스캔라인·안티앨리어싱 렌더러)
+function rasterizePathsToPng(items, x0, y0, x1, y1, scale = 2) {
+  const pad = 2;
+  const bx0 = Math.max(0, Math.floor(x0 - pad)), by0 = Math.max(0, Math.floor(y0 - pad));
+  const bx1 = Math.ceil(x1 + pad), by1 = Math.ceil(y1 + pad);
+  const wPt = Math.max(1, bx1 - bx0), hPt = Math.max(1, by1 - by0);
+  const sc = Math.min(scale, 1600 / Math.max(wPt, hPt, 1));
+  const W = Math.max(1, Math.round(wPt * sc)), H = Math.max(1, Math.round(hPt * sc));
+  const rgba = new Uint8Array(W * H * 4);
+  const parseHex = (h) => [parseInt(h.slice(0, 2), 16) || 0, parseInt(h.slice(2, 4), 16) || 0, parseInt(h.slice(4, 6), 16) || 0];
+  const blend = (idx, r, g, b, a) => {
+    if (a <= 0) return;
+    const da = rgba[idx + 3];
+    if (a >= 255 || da === 0) { rgba[idx] = r; rgba[idx + 1] = g; rgba[idx + 2] = b; rgba[idx + 3] = Math.max(da, a); return; }
+    const sa = a / 255, inv = 1 - sa, outA = sa + (da / 255) * inv;
+    rgba[idx] = Math.round((r * sa + rgba[idx] * (da / 255) * inv) / outA);
+    rgba[idx + 1] = Math.round((g * sa + rgba[idx + 1] * (da / 255) * inv) / outA);
+    rgba[idx + 2] = Math.round((b * sa + rgba[idx + 2] * (da / 255) * inv) / outA);
+    rgba[idx + 3] = Math.round(outA * 255);
+  };
+  for (const it of items) {
+    const polys = []; let cur = null;
+    for (const c of it.cmds || []) {
+      if (c.op === 'M') { cur = { pts: [[(c.x - bx0) * sc, (c.y - by0) * sc]], closed: false }; polys.push(cur); }
+      else if (c.op === 'L') { if (cur) cur.pts.push([(c.x - bx0) * sc, (c.y - by0) * sc]); }
+      else if (c.op === 'C' && cur && cur.pts.length) {
+        const [x0p, y0p] = cur.pts.at(-1);
+        const x1p = (c.x1 - bx0) * sc, y1p = (c.y1 - by0) * sc, x2p = (c.x2 - bx0) * sc, y2p = (c.y2 - by0) * sc, x3p = (c.x - bx0) * sc, y3p = (c.y - by0) * sc;
+        for (let s = 1; s <= 16; s++) {
+          const t = s / 16, u = 1 - t;
+          cur.pts.push([u * u * u * x0p + 3 * u * u * t * x1p + 3 * u * t * t * x2p + t * t * t * x3p, u * u * u * y0p + 3 * u * u * t * y1p + 3 * u * t * t * y2p + t * t * t * y3p]);
+        }
+      } else if (c.op === 'Z' && cur) cur.closed = true;
+    }
+    if (it.fill) {
+      const [fr, fg, fb] = parseHex(it.fill);
+      const edges = [];
+      let minY = H, maxY = 0;
+      for (const p of polys) {
+        if (p.pts.length < 3) continue;
+        for (let i = 0; i < p.pts.length; i++) {
+          const a = p.pts[i], b = p.pts[(i + 1) % p.pts.length];
+          if (Math.abs(a[1] - b[1]) < 1e-6) continue;
+          edges.push([a[0], a[1], b[0], b[1]]);
+          minY = Math.min(minY, a[1], b[1]); maxY = Math.max(maxY, a[1], b[1]);
+        }
+      }
+      const yStart = Math.max(0, Math.floor(minY)), yEnd = Math.min(H - 1, Math.ceil(maxY));
+      for (let y = yStart; y <= yEnd; y++) {
+        const sy = y + 0.5, xs = [];
+        for (const [ax, ay, bx, by] of edges) {
+          if ((ay <= sy && by > sy) || (by <= sy && ay > sy)) xs.push({ x: ax + (sy - ay) * (bx - ax) / (by - ay), d: by > ay ? 1 : -1 });
+        }
+        xs.sort((a, b) => a.x - b.x);
+        if (it.eo) {
+          for (let k = 0; k + 1 < xs.length; k += 2) {
+            const xA = Math.max(0, Math.round(xs[k].x)), xB = Math.min(W - 1, Math.round(xs[k + 1].x) - 1);
+            for (let x = xA; x <= xB; x++) blend((y * W + x) * 4, fr, fg, fb, 255);
+          }
+        } else {
+          let w = 0, xStart = 0;
+          for (const h of xs) {
+            if (w === 0) xStart = h.x;
+            w += h.d;
+            if (w === 0) {
+              const xA = Math.max(0, Math.round(xStart)), xB = Math.min(W - 1, Math.round(h.x) - 1);
+              for (let x = xA; x <= xB; x++) blend((y * W + x) * 4, fr, fg, fb, 255);
+            }
+          }
+        }
+      }
+    }
+    if (it.stroke) {
+      const [sr, sg, sb] = parseHex(it.stroke.color);
+      const hw = Math.max(0.6, (it.stroke.w * sc) / 2);
+      for (const p of polys) {
+        const pts = p.closed && p.pts.length > 2 ? [...p.pts, p.pts[0]] : p.pts;
+        for (let i = 1; i < pts.length; i++) {
+          const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+          const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+          const xA = Math.max(0, Math.floor(Math.min(ax, bx) - hw - 1)), xB = Math.min(W - 1, Math.ceil(Math.max(ax, bx) + hw + 1));
+          const yA = Math.max(0, Math.floor(Math.min(ay, by) - hw - 1)), yB = Math.min(H - 1, Math.ceil(Math.max(ay, by) + hw + 1));
+          for (let y = yA; y <= yB; y++) {
+            const py = y + 0.5;
+            for (let x = xA; x <= xB; x++) {
+              const px = x + 0.5;
+              const t = len2 > 1e-6 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+              const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+              const cov = Math.max(0, Math.min(1, hw + 0.5 - d));
+              if (cov > 0) blend((y * W + x) * 4, sr, sg, sb, Math.round(cov * 255));
+            }
+          }
+        }
+      }
+    }
+  }
+  const png = encodePng(W, H, 3, rgba);
+  return png ? { x0: bx0, y0: by0, w: wPt, h: hPt, pxW: W, pxH: H, data: png, ext: 'png', mime: 'image/png' } : null;
 }
 
 const FONT_KO = [
@@ -258,7 +358,7 @@ function makeLine(chs, base) {
 export async function readPdf(bytes, pdfjs, opts = {}) {
   let doc;
   try {
-    doc = await pdfjs.getDocument({ data: bytes, disableFontFace: true, useSystemFonts: false, isEvalSupported: false, verbosity: 0, cMapUrl: opts.cMapUrl, cMapPacked: true, standardFontDataUrl: opts.standardFontDataUrl }).promise;
+    doc = await pdfjs.getDocument({ data: bytes.slice ? bytes.slice() : new Uint8Array(bytes), disableFontFace: true, useSystemFonts: false, isEvalSupported: false, verbosity: 0, cMapUrl: opts.cMapUrl, cMapPacked: true, standardFontDataUrl: opts.standardFontDataUrl }).promise;
   } catch (e) {
     if (e?.name === 'PasswordException') { const x = new Error('PASSWORD'); x.code = 'PASSWORD'; throw x; }
     throw e;
@@ -316,6 +416,94 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
       if (!ovLine && !ovTbl && !ovImg) pg.blockImages.push(im);
       else pg.floatImages.push({ ...im, behind: pg.lines.some(l => l.x1 > im.x0 && l.x0 < im.x1 && l.y > im.y0 && l.y < im.y1) });
     }
+    pg.shapes = [];
+    const tbls = pg.tables || [];
+    const inTbl = (x0, y0, x1, y1) => tbls.some(t => x0 >= t.x0 - 2 && x1 <= t.x1 + 2 && y0 >= t.y0 - 2 && y1 <= t.y1 + 2);
+    const g = pg.graphics || { segs: [], fills: [], roundRects: [], diags: [], paths: [] };
+    let freeH = mergeSegs(g.segs.filter(s => s.d === 'h' && !inTbl(s.a, s.y, s.b, s.y)), 'h');
+    let freeV = mergeSegs(g.segs.filter(s => s.d === 'v' && !inTbl(s.x, s.a, s.x, s.b)), 'v');
+    let freeFills = g.fills.filter(f => !inTbl(f.x0, f.y0, f.x1, f.y1));
+    const freeRounds = (g.roundRects || []).slice();
+    const isCellDiag = (d) => tbls.some(t => t.grid.cells.some(c =>
+      (Math.abs(d.x1 - c.x0) < 3 && Math.abs(d.y1 - c.y0) < 3 && Math.abs(d.x2 - c.x1) < 3 && Math.abs(d.y2 - c.y1) < 3) ||
+      (Math.abs(d.x2 - c.x0) < 3 && Math.abs(d.y2 - c.y0) < 3 && Math.abs(d.x1 - c.x1) < 3 && Math.abs(d.y1 - c.y1) < 3) ||
+      (Math.abs(d.x1 - c.x0) < 3 && Math.abs(d.y1 - c.y1) < 3 && Math.abs(d.x2 - c.x1) < 3 && Math.abs(d.y2 - c.y0) < 3) ||
+      (Math.abs(d.x2 - c.x0) < 3 && Math.abs(d.y2 - c.y1) < 3 && Math.abs(d.x1 - c.x1) < 3 && Math.abs(d.y1 - c.y0) < 3)
+    ));
+    let freeDiags = (g.diags || []).filter(d => !isCellDiag(d));
+    const freePaths = (g.paths || []).slice();
+    if (freePaths.length) {
+      const clusters = [];
+      for (const p of freePaths) {
+        const hit = clusters.filter(c => p.x0 <= c.x1 + 8 && p.x1 >= c.x0 - 8 && p.y0 <= c.y1 + 8 && p.y1 >= c.y0 - 8);
+        if (!hit.length) clusters.push({ x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, items: [p] });
+        else {
+          const main = hit[0];
+          main.x0 = Math.min(main.x0, p.x0, ...hit.map(c => c.x0));
+          main.y0 = Math.min(main.y0, p.y0, ...hit.map(c => c.y0));
+          main.x1 = Math.max(main.x1, p.x1, ...hit.map(c => c.x1));
+          main.y1 = Math.max(main.y1, p.y1, ...hit.map(c => c.y1));
+          main.items.push(p);
+          for (let k = 1; k < hit.length; k++) {
+            main.items.push(...hit[k].items);
+            clusters.splice(clusters.indexOf(hit[k]), 1);
+          }
+        }
+      }
+      for (const cl of clusters) {
+        if (cl.x1 - cl.x0 < 3 || cl.y1 - cl.y0 < 3) continue;
+        const inCl = (x0, y0, x1, y1) => x0 >= cl.x0 - 6 && x1 <= cl.x1 + 6 && y0 >= cl.y0 - 6 && y1 <= cl.y1 + 6;
+        const clFills = freeFills.filter(f => inCl(f.x0, f.y0, f.x1, f.y1));
+        const clH = freeH.filter(s => inCl(s.a, s.y, s.b, s.y));
+        const clV = freeV.filter(s => inCl(s.x, s.a, s.x, s.b));
+        const clD = freeDiags.filter(d => inCl(Math.min(d.x1, d.x2), Math.min(d.y1, d.y2), Math.max(d.x1, d.x2), Math.max(d.y1, d.y2)));
+        freeFills = freeFills.filter(f => !clFills.includes(f));
+        freeH = freeH.filter(s => !clH.includes(s));
+        freeV = freeV.filter(s => !clV.includes(s));
+        freeDiags = freeDiags.filter(d => !clD.includes(d));
+        const extraBefore = clFills.map(f => ({ cmds: [{ op: 'M', x: f.x0, y: f.y0 }, { op: 'L', x: f.x1, y: f.y0 }, { op: 'L', x: f.x1, y: f.y1 }, { op: 'L', x: f.x0, y: f.y1 }, { op: 'Z' }], fill: f.color, eo: false, stroke: null }));
+        const extraAfter = [
+          ...clH.map(s => ({ cmds: [{ op: 'M', x: s.a, y: s.y }, { op: 'L', x: s.b, y: s.y }], fill: null, stroke: { color: s.color, w: s.w } })),
+          ...clV.map(s => ({ cmds: [{ op: 'M', x: s.x, y: s.a }, { op: 'L', x: s.x, y: s.b }], fill: null, stroke: { color: s.color, w: s.w } })),
+          ...clD.map(d => ({ cmds: [{ op: 'M', x: d.x1, y: d.y1 }, { op: 'L', x: d.x2, y: d.y2 }], fill: null, stroke: { color: d.color, w: d.w } })),
+        ];
+        const pngObj = rasterizePathsToPng([...extraBefore, ...cl.items, ...extraAfter], cl.x0, cl.y0, cl.x1, cl.y1, 2);
+        if (pngObj) {
+          const behind = pg.lines.some(l => l.x1 > pngObj.x0 && l.x0 < pngObj.x0 + pngObj.w && l.y > pngObj.y0 && l.y < pngObj.y0 + pngObj.h);
+          pg.shapes.push({ type: 'img', ...pngObj, behind });
+        }
+      }
+    }
+    for (const r of freeRounds) {
+      const behind = pg.lines.some(l => l.x1 > r.x0 && l.x0 < r.x1 && l.y > r.y0 && l.y < r.y1);
+      pg.shapes.push({ type: 'rect', x0: r.x0, y0: r.y0, w: r.x1 - r.x0, h: r.y1 - r.y0, ratio: r.ratio, fill: r.fill, stroke: r.stroke, behind });
+    }
+    const usedH = new Set(), usedV = new Set();
+    const matchBoxEdges = (x0, y0, x1, y1, tol = 1.8) => {
+      const top = freeH.find(s => !usedH.has(s) && Math.abs(s.y - y0) <= tol && Math.abs(s.a - x0) <= tol && Math.abs(s.b - x1) <= tol);
+      const bot = freeH.find(s => !usedH.has(s) && s !== top && Math.abs(s.y - y1) <= tol && Math.abs(s.a - x0) <= tol && Math.abs(s.b - x1) <= tol);
+      const left = freeV.find(s => !usedV.has(s) && Math.abs(s.x - x0) <= tol && Math.abs(s.a - y0) <= tol && Math.abs(s.b - y1) <= tol);
+      const right = freeV.find(s => !usedV.has(s) && s !== left && Math.abs(s.x - x1) <= tol && Math.abs(s.a - y0) <= tol && Math.abs(s.b - y1) <= tol);
+      if (top && bot && left && right) { usedH.add(top); usedH.add(bot); usedV.add(left); usedV.add(right); return { color: top.color, w: top.w }; }
+      return null;
+    };
+    for (const f of freeFills) {
+      const st = matchBoxEdges(f.x0, f.y0, f.x1, f.y1);
+      pg.shapes.push({ type: 'rect', x0: f.x0, y0: f.y0, w: f.x1 - f.x0, h: f.y1 - f.y0, ratio: 0, fill: f.color, stroke: st, behind: true });
+    }
+    for (let i = 0; i < freeH.length; i++) {
+      const top = freeH[i]; if (usedH.has(top)) continue;
+      for (let j = i + 1; j < freeH.length; j++) {
+        const bot = freeH[j]; if (usedH.has(bot)) continue;
+        if (Math.abs(top.a - bot.a) <= 1.8 && Math.abs(top.b - bot.b) <= 1.8 && bot.y - top.y > 4) {
+          const st = matchBoxEdges(top.a, top.y, top.b, bot.y);
+          if (st) { pg.shapes.push({ type: 'rect', x0: top.a, y0: top.y, w: top.b - top.a, h: bot.y - top.y, ratio: 0, fill: null, stroke: st, behind: true }); break; }
+        }
+      }
+    }
+    for (const s of freeH) if (!usedH.has(s)) pg.shapes.push({ type: 'line', x1: s.a, y1: s.y, x2: s.b, y2: s.y, w: s.w, color: s.color });
+    for (const s of freeV) if (!usedV.has(s)) pg.shapes.push({ type: 'line', x1: s.x, y1: s.a, x2: s.x, y2: s.b, w: s.w, color: s.color });
+    for (const d of freeDiags) pg.shapes.push({ type: 'line', x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, w: d.w, color: d.color });
   }
   // 표 칸 안 줄 간격 (워드는 칸 안을 본문과 다른 줄 간격으로 두는 일이 많다): 칸 안 이웃 줄 간격 / 글자 크기 의 최빈값
   const cellRatios = [];
@@ -449,6 +637,7 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
       prev = line; prevBottom = line.y + over(line.size);
     });
     if (pg.floatImages?.length && paras[startIdx]) paras[startIdx].floats = pg.floatImages;
+    if (pg.shapes?.length && paras[startIdx]) paras[startIdx].shapes = pg.shapes;
   });
 
   // 쪽 맨 위에서는 워드가 문단 위 간격을 지우므로, 흘러 넘어간 문단은 같은 모양 문단의 위 간격을 빌려 온다
@@ -476,11 +665,13 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
     if (p.k === 'img') {
       const item = { k: 'img', data: p.data, ext: p.ext, mime: p.mime, w: p.w, h: p.h, pxW: p.pxW, pxH: p.pxH, left: p.left, x0: p.x0, y0: p.y0, before: p.before || 0, pageBreak: p.pageBreak && !p.emptyBefore };
       if (p.floats) item.floats = p.floats;
+      if (p.shapes) Object.defineProperty(item, '_shapes', { value: p.shapes, enumerable: false });
       out.push(item); continue;
     }
     if (p.k === 'tbl') {
       const item = { ...tableOut(p), before: p.before || 0, pageBreak: p.pageBreak && !p.emptyBefore };
       if (p.floats) item.floats = p.floats;
+      if (p.shapes) Object.defineProperty(item, '_shapes', { value: p.shapes, enumerable: false });
       out.push(item); continue;
     }
     const f = p.lines[0], s = p.lines[1];
@@ -513,6 +704,7 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
     const wordBreak = bi.n > 0 && bi.sp === bi.n;
     const item = { align, left, right, indent, wordBreak, before: p.before || 0, pct: pp, size: f.size, runs: toRuns(chars), pageBreak: p.pageBreak && !p.emptyBefore };
     if (p.floats) item.floats = p.floats;
+    if (p.shapes) Object.defineProperty(item, '_shapes', { value: p.shapes, enumerable: false });
     out.push(item);
   }
   // ── 표 → 칸마다 문단 ──

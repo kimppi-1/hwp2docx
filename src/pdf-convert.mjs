@@ -16,6 +16,15 @@ function wordModel(m) {
   const split = (v) => v > 60 ? v - 42.52 : v / 2;   // 종이 끝 → 머리말까지 거리
   const pg = m.page;
   const rpr = (r) => ({ fonts: { eastAsia: r.font, ascii: r.font, hAnsi: r.font, cs: r.font }, sz: Math.round(r.size * 2), color: r.color, b: r.bold, i: r.italic, spaceEm: m.spaceEm ? (m.spaceEm[r.font] ?? SPACE_ADVANCE[r.font] ?? 0.5) : undefined });
+  const mapFloat = (f) => {
+    if (f.type === 'line') return { type: 'line', x1: tw(f.x1), y1: tw(f.y1), x2: tw(f.x2), y2: tw(f.y2), w: tw(f.w), color: f.color };
+    if (f.type === 'rect') return { type: 'rect', x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h), ratio: f.ratio || 0, fill: f.fill, stroke: f.stroke ? { color: f.stroke.color, w: tw(f.stroke.w) } : null, behind: f.behind };
+    return { ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) };
+  };
+  const floatsOf = (p) => {
+    const all = [...(p.floats || []), ...(p._shapes || [])];
+    return all.length ? all.map(mapFloat) : undefined;
+  };
   const para = (p) => {
     const ppr = {
       jc: ALIGN_WORD[p.align] ?? 'both',
@@ -26,11 +35,11 @@ function wordModel(m) {
       hwpWordBreak: !!p.wordBreak,
     };
     const base = { font: p.runs[0]?.font ?? p.font ?? '함초롬바탕', size: p.size, color: '000000', bold: false, italic: false };
-    const fl = p.floats?.map(f => ({ ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) }));
+    const fl = floatsOf(p);
     return { k: 'p', ppr, markR: rpr(p.runs.at(-1) ?? base), runs: p.runs.map(r => ({ t: 'text', text: r.text, rpr: rpr(r) })), ...(fl ? { floats: fl } : {}) };
   };
   const img = (im) => {
-    const fl = im.floats?.map(f => ({ ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) }));
+    const fl = floatsOf(im);
     return { k: 'img', data: im.data, ext: im.ext || 'png', mime: im.mime || 'image/png', w: tw(im.w), h: tw(im.h), pxW: im.pxW, pxH: im.pxH, left: tw(im.left || 0), before: tw(im.before || 0), pageBreak: im.pageBreak, ...(fl ? { floats: fl } : {}) };
   };
   const bord = (b) => (b ? { type: 'single', sz: Math.max(1, Math.round(b.w * 8)), color: b.color } : undefined);
@@ -50,7 +59,7 @@ function wordModel(m) {
       const bw = Math.max(0, ...cells.map(c => (c.borders.bottom ? c.borders.bottom.sz / 8 * 20 : 0)));
       return { h: Math.max(20, tw(h) - mar - bw), hRule: 'atLeast', header: r < (t.headerRows || 0), cells };
     });
-    const fl = t.floats?.map(f => ({ ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) }));
+    const fl = floatsOf(t);
     return { k: 'tbl', grid: t.cols.map(tw), rows, borders: {}, cellMar: { top: 0, bottom: 0, left: 0, right: 0 }, jc: 'left', ind: tw(t.left), before: tw(t.before || 0), pageBreak: t.pageBreak, ...(fl ? { floats: fl } : {}) };
   };
   const blocks = m.paras.map(p => (p.k === 'tbl' ? table(p) : p.k === 'img' ? img(p) : para(p)));
@@ -98,7 +107,15 @@ function hwpModel(m) {
     const base = { font: p.runs?.[0]?.font ?? p.font ?? '함초롬바탕', size: p.size ?? 10, color: '000000', bold: false, italic: false };
     const items = lead ? lead(cs(base)) : [];
     let pos = items.length * 8;
-    for (const fl of p.floats || []) {
+    for (const fl of [...(p.floats || []), ...(p._shapes || [])]) {
+      if (fl.type === 'line') {
+        const fCtrl = { id: 'line', x1: U(fl.x1), y1: U(fl.y1), x2: U(fl.x2), y2: U(fl.y2), w: U(fl.w), color: fl.color };
+        items.push({ t: 'ctrl', ctrl: fCtrl, cs: cs(base), pos }); pos += 8; continue;
+      }
+      if (fl.type === 'rect') {
+        const fCtrl = { id: 'rect', x: U(fl.x0), y: U(fl.y0), width: U(fl.w), height: U(fl.h), ratio: fl.ratio || 0, fill: fl.fill, stroke: fl.stroke ? { color: fl.stroke.color, w: U(fl.stroke.w) } : null, behind: fl.behind };
+        items.push({ t: 'ctrl', ctrl: fCtrl, cs: cs(base), pos }); pos += 8; continue;
+      }
       const fCtrl = { id: 'pic ', inline: false, wrap: fl.behind ? 2 : 3, vertRel: 0, horzRel: 0, vertAlign: 0, horzAlign: 0, x: U(fl.x0), y: U(fl.y0), width: U(fl.w), height: U(fl.h), z: 0, marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0, data: fl.data, ext: fl.ext || 'png', mime: fl.mime || 'image/png' };
       items.push({ t: 'ctrl', ctrl: fCtrl, cs: cs(base), pos }); pos += 8;
     }
@@ -111,7 +128,7 @@ function hwpModel(m) {
       width: U(im.w), height: U(im.h), z: 0,
       marginLeft: U(im.left || 0), marginRight: 0, marginTop: U(im.before || 0), marginBottom: 0,
       data: im.data, ext: im.ext || 'png', mime: im.mime || 'image/png' };
-    const host = mkPara({ align: 'LEFT', left: 0, indent: 0, before: 0, pct: 100, size: 1, runs: [], pageBreak: im.pageBreak, floats: im.floats }, lead);
+    const host = mkPara({ align: 'LEFT', left: 0, indent: 0, before: 0, pct: 100, size: 1, runs: [], pageBreak: im.pageBreak, floats: im.floats, _shapes: im._shapes }, lead);
     host.items.push({ t: 'ctrl', ctrl, cs: host.endCharShape, pos: host.items.length * 8 });
     host.lineSegs[0].gap = 0;
     return host;
@@ -144,7 +161,7 @@ function hwpModel(m) {
       width: U(tb.cols.reduce((a, b) => a + b, 0)), height: U(tb.rows.reduce((a, b) => a + b, 0)), z: 0,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0, split: 2, repeatHeader: !!tb.headerRows,
       rows: tb.rows.length, cols: tb.cols.length, cellSpacing: 0, padLeft: 0, padRight: 0, padTop: 0, padBottom: 0, borderFillId: 0, cells };
-    const host = mkPara({ align: 'LEFT', left: tb.left, indent: 0, before: tb.before || 0, pct: 100, size: 10, runs: [], pageBreak: tb.pageBreak, floats: tb.floats }, lead);
+    const host = mkPara({ align: 'LEFT', left: tb.left, indent: 0, before: tb.before || 0, pct: 100, size: 10, runs: [], pageBreak: tb.pageBreak, floats: tb.floats, _shapes: tb._shapes }, lead);
     host.items.push({ t: 'ctrl', ctrl, cs: host.endCharShape, pos: host.items.length * 8 });
     host.lineSegs[0].gap = 0;
     return host;

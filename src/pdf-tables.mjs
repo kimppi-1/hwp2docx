@@ -7,9 +7,9 @@ const apply = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[
 const hex = (c) => c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
 const isWhite = (c) => /^(F[A-F0-9]){3}$/.test(c) && parseInt(c.slice(0, 2), 16) > 0xF4 && parseInt(c.slice(2, 4), 16) > 0xF4 && parseInt(c.slice(4, 6), 16) > 0xF4;
 
-// 연산 목록에서 선(가로·세로)과 채운 사각형을 뽑는다. vpT: 화면 변환(viewport.transform)
+// 연산 목록에서 선(가로·세로)과 채운 사각형, 둥근 상자·대각선·복잡한 벡터 경로를 뽑는다. vpT: 화면 변환(viewport.transform)
 export function extractGraphics(ops, O, vpT) {
-  const segs = [], fills = [];
+  const segs = [], fills = [], roundRects = [], diags = [], paths = [];
   let ctm = [1, 0, 0, 1, 0, 0], fill = '000000', stroke = '000000', lw = 1;
   const stack = [];
   let path = null;
@@ -28,19 +28,47 @@ export function extractGraphics(ops, O, vpT) {
       case O.constructPath: {
         // a = [ops, coords, minMax]
         const pops = a[0], c = a[1]; let k = 0;
-        const subs = []; let cur = null;
+        const subs = path ? path.subs : [];
+        let cur = subs.at(-1) && !subs.at(-1).closed ? subs.at(-1) : null;
         const M = mul(vpT, ctm);
         const pt = (x, y) => apply(M, x, y);
+        const bez = (p0, p1, p2, p3, t) => {
+          const u = 1 - t;
+          return [u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0], u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]];
+        };
         for (const op of pops) {
           if (op === O.rectangle) {
             const [x, y, w, h] = [c[k], c[k + 1], c[k + 2], c[k + 3]]; k += 4;
-            subs.push({ pts: [pt(x, y), pt(x + w, y), pt(x + w, y + h), pt(x, y + h)], closed: true, rect: true });
+            const p0 = pt(x, y), p1 = pt(x + w, y), p2 = pt(x + w, y + h), p3 = pt(x, y + h);
+            subs.push({ pts: [p0, p1, p2, p3], cmds: [{ op: 'M', x: p0[0], y: p0[1] }, { op: 'L', x: p1[0], y: p1[1] }, { op: 'L', x: p2[0], y: p2[1] }, { op: 'L', x: p3[0], y: p3[1] }, { op: 'Z' }], closed: true, rect: true });
             cur = null;
-          } else if (op === O.moveTo) { cur = { pts: [pt(c[k], c[k + 1])] }; subs.push(cur); k += 2; }
-          else if (op === O.lineTo) { if (!cur) { cur = { pts: [] }; subs.push(cur); } cur.pts.push(pt(c[k], c[k + 1])); k += 2; }
-          else if (op === O.curveTo) { if (cur) cur.curve = true; k += 6; }
-          else if (op === O.curveTo2 || op === O.curveTo3) { if (cur) cur.curve = true; k += 4; }
-          else if (op === O.closePath) { if (cur) cur.closed = true; }
+          } else if (op === O.moveTo) {
+            const p0 = pt(c[k], c[k + 1]); k += 2;
+            cur = { pts: [p0], cmds: [{ op: 'M', x: p0[0], y: p0[1] }] }; subs.push(cur);
+          } else if (op === O.lineTo) {
+            const p0 = pt(c[k], c[k + 1]); k += 2;
+            if (!cur) { cur = { pts: [p0], cmds: [{ op: 'M', x: p0[0], y: p0[1] }] }; subs.push(cur); }
+            else { cur.pts.push(p0); cur.cmds.push({ op: 'L', x: p0[0], y: p0[1] }); }
+          } else if (op === O.curveTo) {
+            const p1 = pt(c[k], c[k + 1]), p2 = pt(c[k + 2], c[k + 3]), p3 = pt(c[k + 4], c[k + 5]); k += 6;
+            if (cur && cur.pts.length) {
+              const p0 = cur.pts.at(-1);
+              cur.curve = true;
+              cur.cmds.push({ op: 'C', x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1], x: p3[0], y: p3[1] });
+              for (const t of [0.25, 0.5, 0.75, 1]) cur.pts.push(bez(p0, p1, p2, p3, t));
+            }
+          } else if (op === O.curveTo2 || op === O.curveTo3) {
+            const pa = pt(c[k], c[k + 1]), pb = pt(c[k + 2], c[k + 3]); k += 4;
+            if (cur && cur.pts.length) {
+              const p0 = cur.pts.at(-1);
+              const p1 = op === O.curveTo2 ? p0 : pa, p2 = pa, p3 = pb;
+              cur.curve = true;
+              cur.cmds.push({ op: 'C', x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1], x: p3[0], y: p3[1] });
+              for (const t of [0.25, 0.5, 0.75, 1]) cur.pts.push(bez(p0, p1, p2, p3, t));
+            }
+          } else if (op === O.closePath) {
+            if (cur) { cur.closed = true; cur.cmds.push({ op: 'Z' }); }
+          }
         }
         path = { subs, scale: scaleOf(M) };
         break;
@@ -50,11 +78,41 @@ export function extractGraphics(ops, O, vpT) {
         if (!path) break;
         const doFill = fn !== O.stroke && fn !== O.closeStroke;
         const doStroke = fn !== O.fill && fn !== O.eoFill;
+        const eo = fn === O.eoFill || fn === O.eoFillStroke || fn === O.closeEOFillStroke;
+        const lwp = Math.max(0.1, lw * path.scale);
         for (const s of path.subs) {
-          if (s.curve || s.pts.length < 2) continue;
+          if (s.pts.length < 2) continue;
           const xs = s.pts.map(p => p[0]), ys = s.pts.map(p => p[1]);
           const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+          if (s.curve) {
+            // 둥근 직사각형 판별: 4개의 축 정렬 직선(위·아래·왼쪽·오른쪽)과 4개의 모서리 곡선으로 이루어진 닫힌 도형
+            const lines = [], curves = s.cmds.filter(c => c.op === 'C').length;
+            let lx = 0, ly = 0;
+            for (const cmd of s.cmds) {
+              if (cmd.op === 'M' || cmd.op === 'C') { lx = cmd.x; ly = cmd.y; }
+              else if (cmd.op === 'L') { lines.push([lx, ly, cmd.x, cmd.y]); lx = cmd.x; ly = cmd.y; }
+            }
+            const w = x1 - x0, h = y1 - y0;
+            const hEdges = lines.filter(([ax, ay, bx, by]) => Math.abs(ay - by) < 0.5 && Math.abs(bx - ax) > 0.3 * w && (Math.abs(ay - y0) < 1.5 || Math.abs(ay - y1) < 1.5));
+            const vEdges = lines.filter(([ax, ay, bx, by]) => Math.abs(ax - bx) < 0.5 && Math.abs(by - ay) > 0.3 * h && (Math.abs(ax - x0) < 1.5 || Math.abs(ax - x1) < 1.5));
+            if (w > 6 && h > 6 && hEdges.length === 2 && vEdges.length === 2 && curves >= 4 && curves <= 8) {
+              const rx = Math.max(1, (w - Math.abs(hEdges[0][2] - hEdges[0][0])) / 2);
+              const ratio = Math.max(5, Math.min(50, Math.round((rx / (Math.min(w, h) / 2)) * 50)));
+              roundRects.push({ x0, y0, x1, y1, ratio, fill: doFill && !isWhite(fill) ? fill : null, stroke: doStroke ? { color: stroke, w: lwp } : null });
+            } else if (w > 1.5 || h > 1.5) {
+              paths.push({ cmds: s.cmds, x0, y0, x1, y1, fill: doFill ? fill : null, eo, stroke: doStroke ? { color: stroke, w: lwp } : null });
+            }
+            continue;
+          }
           const axis = s.pts.every((p, j) => { const q = s.pts[(j + 1) % s.pts.length]; return Math.abs(p[0] - q[0]) < 0.3 || Math.abs(p[1] - q[1]) < 0.3; });
+          if (!axis) {
+            if (s.pts.length === 2 && doStroke && !doFill && Math.hypot(s.pts[1][0] - s.pts[0][0], s.pts[1][1] - s.pts[0][1]) > 2) {
+              diags.push({ d: 'diag', x1: s.pts[0][0], y1: s.pts[0][1], x2: s.pts[1][0], y2: s.pts[1][1], w: lwp, color: stroke });
+            } else if (x1 - x0 > 1.5 || y1 - y0 > 1.5) {
+              paths.push({ cmds: s.cmds, x0, y0, x1, y1, fill: doFill ? fill : null, eo, stroke: doStroke ? { color: stroke, w: lwp } : null });
+            }
+            continue;
+          }
           if (doFill && axis && s.pts.length >= 4) {
             const w = x1 - x0, h = y1 - y0;
             if (h <= 2.6 && w > 2) segs.push({ d: 'h', y: (y0 + y1) / 2, a: x0, b: x1, w: Math.max(0.1, h), color: fill });
@@ -62,14 +120,12 @@ export function extractGraphics(ops, O, vpT) {
             else if (w > 2 && h > 2 && !isWhite(fill)) fills.push({ x0, y0, x1, y1, color: fill });
           }
           if (doStroke) {
-            const lwp = Math.max(0.1, lw * path.scale);
-            const n = s.pts.length, pts = s.closed || s.rect ? [...s.pts, s.pts[0]] : s.pts;
+            const n = s.pts.length, pts = (s.closed || s.rect) && n > 2 ? [...s.pts, s.pts[0]] : s.pts;
             for (let j = 1; j < pts.length; j++) {
               const p = pts[j - 1], q = pts[j];
               if (Math.abs(p[1] - q[1]) < 0.3 && Math.abs(p[0] - q[0]) > 2) segs.push({ d: 'h', y: p[1], a: Math.min(p[0], q[0]), b: Math.max(p[0], q[0]), w: lwp, color: stroke });
               else if (Math.abs(p[0] - q[0]) < 0.3 && Math.abs(p[1] - q[1]) > 2) segs.push({ d: 'v', x: p[0], a: Math.min(p[1], q[1]), b: Math.max(p[1], q[1]), w: lwp, color: stroke });
             }
-            void n;
           }
         }
         path = null;
@@ -79,11 +135,11 @@ export function extractGraphics(ops, O, vpT) {
       default: break;
     }
   }
-  return { segs, fills };
+  return { segs, fills, roundRects, diags, paths };
 }
 
 // 같은 줄 위에 이어진 선 조각을 하나로
-function mergeSegs(segs, d) {
+export function mergeSegs(segs, d) {
   const key = d === 'h' ? 'y' : 'x';
   const list = segs.filter(s => s.d === d).sort((p, q) => p[key] - q[key] || p.a - q.a);
   const out = [];
