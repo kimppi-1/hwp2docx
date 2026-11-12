@@ -15,7 +15,8 @@
   "dependencies": {
     "cfb": "^1.2.2",
     "fflate": "^0.8.2",
-    "pdfjs-dist": "^4.10.38"
+    "pdfjs-dist": "^4.10.38",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

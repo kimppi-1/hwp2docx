@@ -370,9 +370,92 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   try { const md = await doc.getMetadata(); producer = `${md?.info?.Producer || ''} ${md?.info?.Creator || ''}`; } catch {}
   const hancom = /hancom|hwp|한컴|한글/i.test(producer);
   await doc.destroy?.();
-  const everyLine = pages.flatMap(pg => pg.lines);
+  let everyLine = pages.flatMap(pg => pg.lines);
   const report = { pages: pages.length, images: pages.reduce((a, p) => a + p.images, 0), drawings: pages.reduce((a, p) => a + p.paths, 0), tables: 0, whiteText: 0, fonts: [...new Set(everyLine.flatMap(l => l.chars.filter(c => !c.ws).map(c => c.font)))] };
-  if (!everyLine.length) { const e = new Error('NO_TEXT'); e.code = 'NO_TEXT'; throw e; }
+  if (!everyLine.length) {
+    if (opts.ocr !== false) {
+      try {
+        const Tesseract = (await import('tesseract.js')).default;
+        const worker = await Tesseract.createWorker(opts.ocrLang || 'kor+eng');
+        for (const pg of pages) {
+          const imgs = pg.pageImages || [];
+          for (const im of imgs) {
+            if (!im.data) continue;
+            const ret = await worker.recognize(im.data, {}, { blocks: true });
+            const blocks = ret.data.blocks || [];
+            const imgW = im.pxW || (im.x1 - im.x0), imgH = im.pxH || (im.y1 - im.y0);
+            const scaleX = (im.x1 - im.x0) / imgW, scaleY = (im.y1 - im.y0) / imgH;
+            for (const b of blocks) {
+              for (const p of b.paragraphs || []) {
+                for (const l of p.lines || []) {
+                  const chars = [];
+                  for (const w of l.words || []) {
+                    const wordW = (w.bbox.x1 - w.bbox.x0) * scaleX;
+                    const charW = wordW / Math.max(1, w.text.length);
+                    const sz = Math.max(8, Math.round((w.bbox.y1 - w.bbox.y0) * scaleY));
+                    for (let ci = 0; ci < w.text.length; ci++) {
+                      chars.push({
+                        c: w.text[ci],
+                        x: im.x0 + (w.bbox.x0 * scaleX) + ci * charW,
+                        y: im.y0 + w.bbox.y1 * scaleY,
+                        w: charW,
+                        size: sz,
+                        rawSize: sz,
+                        font: '함초롬바탕',
+                        color: '000000',
+                      });
+                    }
+                    chars.push({ c: ' ', ws: true, x: im.x0 + w.bbox.x1 * scaleX, y: im.y0 + w.bbox.y1 * scaleY, size: sz, rawSize: sz, font: '함초롬바탕', color: '000000' });
+                  }
+                  if (chars.length) {
+                    const solid = chars.filter(c => !c.ws);
+                    if (solid.length) {
+                      const x0 = solid[0].x, x1 = solid.at(-1).x + solid.at(-1).w;
+                      pg.lines.push({
+                        y: solid[0].y,
+                        x0, x1,
+                        size: solid[0].size,
+                        chars,
+                        firstWordW: solid[0].w,
+                        trailingSpace: true,
+                        gapSum: 0, gapN: 0, avgGap: null,
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        await worker.terminate();
+        everyLine = pages.flatMap(pg => pg.lines);
+        report.fonts = ['함초롬바탕'];
+      } catch (ocrErr) {
+        // OCR 실패 또는 미지원 시 원래 NO_TEXT 처리
+      }
+    }
+    if (!everyLine.length) {
+      if (opts.mode === 'image_only' || opts.asImages) {
+        // 쪽 전체를 그림으로 배치하는 모드
+        const out = [];
+        for (let pi = 0; pi < pages.length; pi++) {
+          const pg = pages[pi];
+          const im = pg.pageImages?.[0];
+          if (im) {
+            out.push({
+              k: 'img',
+              data: im.data, ext: im.ext || 'png', mime: im.mime || 'image/png',
+              w: im.w, h: im.h, pxW: im.pxW, pxH: im.pxH,
+              left: 0, x0: im.x0, y0: im.y0, before: 0, pageBreak: pi > 0,
+            });
+          }
+        }
+        const page = { w: pages[0].W, h: pages[0].H, left: 0, right: 0, top: 0, bottom: 0 };
+        return { paras: out, page, pages: pages.length, spaceEm: null, report };
+      }
+      const e = new Error('NO_TEXT'); e.code = 'NO_TEXT'; throw e;
+    }
+  }
 
   // 표 찾기: 표 선·칸 배경으로 칸을 나누고, 표 안 글자를 칸으로 옮긴다
   if (opts.tables !== false) for (const pg of pages) {

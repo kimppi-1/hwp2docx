@@ -167,6 +167,7 @@
   <details class="settings">
     <summary data-i18n="set2">PDF 설정</summary>
     <label><input type="checkbox" id="pdfWord"><span><span data-i18n="pdfWord">PDF를 한글 대신 워드(.docx)로 바꾸기</span><small data-i18n="pdfWordS">글꼴·크기·색·줄 간격·여백은 같은 방법으로 옮깁니다.</small></span></label>
+    <label><input type="checkbox" id="pdfOcrImage"><span><span data-i18n="pdfOcrImage">스캔(그림) PDF를 모양 그대로 쪽 그림으로 깔기</span><small data-i18n="pdfOcrImageS">기본값은 글자를 고칠 수 있게 OCR(문자 인식)로 추출합니다.</small></span></label>
   </details>
 
   <div id="results" aria-live="polite"></div>
@@ -220,6 +221,7 @@ window.I18N = {
     notWord: 'MS 워드가 아닌 프로그램에서 열 파일', notWordS: '한컴오피스, 구글 문서, LibreOffice 등',
     set2: 'PDF 설정',
     pdfWord: 'PDF를 한글 대신 워드(.docx)로 바꾸기', pdfWordS: '글꼴·크기·색·줄 간격·여백은 같은 방법으로 옮깁니다.',
+    pdfOcrImage: '스캔(그림) PDF를 모양 그대로 쪽 그림으로 깔기', pdfOcrImageS: '기본값은 글자를 고칠 수 있게 OCR(문자 인식)로 추출합니다.',
     g1: '똑같이 보이려면',
     g1a: '문서에 쓰인 글꼴이 바꾼 파일을 여는 컴퓨터에도 있어야 합니다. 바꾼 뒤 이 컴퓨터에 없는 글꼴을 붉게 표시합니다.',
     g1b: '워드 파일은 MS 워드 기준으로 맞췄습니다. 다른 프로그램에서는 띄어쓰기 폭과 표 높이가 조금 다릅니다.',
@@ -265,6 +267,7 @@ window.I18N = {
     notWord: 'The file will be opened in a program other than MS Word', notWordS: 'Hancom Office, Google Docs, LibreOffice, etc.',
     set2: 'PDF settings',
     pdfWord: 'Convert PDFs to Word (.docx) instead of Hangul', pdfWordS: 'Fonts, sizes, colors, line spacing and margins carry over the same way.',
+    pdfOcrImage: 'Keep scanned/image PDFs as full-page background images', pdfOcrImageS: 'By default, text is extracted via OCR so it can be edited.',
     g1: 'To make it look the same',
     g1a: 'The fonts used in the document must also be installed on the computer that opens the converted file. After conversion, fonts missing on this computer are marked in red.',
     g1b: 'Word files are tuned for MS Word. In other programs, space widths and table heights differ slightly.',
@@ -310,6 +313,7 @@ window.I18N = {
     notWord: '要在 MS Word 以外的程序中打开', notWordS: 'Hancom Office、Google 文档、LibreOffice 等',
     set2: 'PDF 设置',
     pdfWord: '将 PDF 转换为 Word（.docx）而不是 Hangul', pdfWordS: '字体、字号、颜色、行距和页边距以相同方式保留。',
+    pdfOcrImage: '扫描（图片）PDF原样作为整页底图放置', pdfOcrImageS: '默认通过OCR（文字识别）提取可编辑文本。',
     g1: '想要看起来一样',
     g1a: '文档中使用的字体也必须安装在打开转换后文件的电脑上。转换后，本机没有的字体会以红色标出。',
     g1b: 'Word 文件以 MS Word 为准进行调整。在其他程序中，空格宽度和表格高度会略有不同。',
@@ -355,6 +359,7 @@ window.I18N = {
     notWord: 'MS Word 以外のソフトで開く', notWordS: 'Hancom Office、Google ドキュメント、LibreOffice など',
     set2: 'PDF の設定',
     pdfWord: 'PDF を Hangul ではなく Word（.docx）に変換', pdfWordS: 'フォント・サイズ・色・行間・余白は同じ方法で移します。',
+    pdfOcrImage: 'スキャン（画像）PDFをそのままページ全体の背景画像として配置', pdfOcrImageS: '既定値では文字を編集できるようOCR（文字認識）で抽出します。',
     g1: '同じ見た目にするには',
     g1a: '文書で使われているフォントが、変換後のファイルを開くパソコンにも入っている必要があります。変換後、このパソコンにないフォントを赤で表示します。',
     g1b: 'Word ファイルは MS Word に合わせて調整しています。ほかのソフトでは空白の幅や表の高さが少し異なります。',
@@ -501,7 +506,7 @@ window.I18N_NOTES = [
       if (isHwp) { const r = Hwp2Docx.hwpToDocx(bytes, { keepPageBreaks: $('keepPages').checked, keepLineBreaks: $('keepLines').checked, target: $('notWord').checked ? 'libreoffice' : 'word' }); out = { data: r.docx, report: r.report }; }
       else if (isPdf) {
         const pdfjs = await loadPdfjs();
-        const o = { cMapUrl: new URL('vendor/pdfjs/cmaps/', location.href).href, target: $('notWord').checked ? 'libreoffice' : 'word' };
+        const o = { cMapUrl: new URL('vendor/pdfjs/cmaps/', location.href).href, target: $('notWord').checked ? 'libreoffice' : 'word', asImages: $('pdfOcrImage').checked, ocr: !$('pdfOcrImage').checked };
         const r = pdfToWord ? await Hwp2Docx.pdfToDocx(bytes, pdfjs, o) : await Hwp2Docx.pdfToHwpx(bytes, pdfjs, o);
         out = { data: r.docx ?? r.hwpx, report: r.report };
       }
