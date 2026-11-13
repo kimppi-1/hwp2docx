@@ -123,8 +123,8 @@ export function extractGraphics(ops, O, vpT) {
             const n = s.pts.length, pts = (s.closed || s.rect) && n > 2 ? [...s.pts, s.pts[0]] : s.pts;
             for (let j = 1; j < pts.length; j++) {
               const p = pts[j - 1], q = pts[j];
-              if (Math.abs(p[1] - q[1]) < 0.3 && Math.abs(p[0] - q[0]) > 2) segs.push({ d: 'h', y: p[1], a: Math.min(p[0], q[0]), b: Math.max(p[0], q[0]), w: lwp, color: stroke });
-              else if (Math.abs(p[0] - q[0]) < 0.3 && Math.abs(p[1] - q[1]) > 2) segs.push({ d: 'v', x: p[0], a: Math.min(p[1], q[1]), b: Math.max(p[1], q[1]), w: lwp, color: stroke });
+              if (Math.abs(p[1] - q[1]) < 0.3 && Math.abs(p[0] - q[0]) >= 0.5) segs.push({ d: 'h', y: p[1], a: Math.min(p[0], q[0]), b: Math.max(p[0], q[0]), w: lwp, color: stroke });
+              else if (Math.abs(p[0] - q[0]) < 0.3 && Math.abs(p[1] - q[1]) >= 0.5) segs.push({ d: 'v', x: p[0], a: Math.min(p[1], q[1]), b: Math.max(p[1], q[1]), w: lwp, color: stroke });
             }
           }
         }
@@ -138,13 +138,13 @@ export function extractGraphics(ops, O, vpT) {
   return { segs, fills, roundRects, diags, paths };
 }
 
-// 같은 줄 위에 이어진 선 조각을 하나로
+// 같은 줄 위에 이어진 선 조각(점선·파선 포함)을 하나로
 export function mergeSegs(segs, d) {
   const key = d === 'h' ? 'y' : 'x';
   const list = segs.filter(s => s.d === d).sort((p, q) => p[key] - q[key] || p.a - q.a);
   const out = [];
   for (const s of list) {
-    const o = out.find(o => Math.abs(o[key] - s[key]) < 0.8 && s.a <= o.b + 1.2 && s.b >= o.a - 1.2);
+    const o = out.find(o => Math.abs(o[key] - s[key]) < 0.8 && s.a <= o.b + 3.0 && s.b >= o.a - 3.0);
     if (o) { o.a = Math.min(o.a, s.a); o.b = Math.max(o.b, s.b); o.w = Math.max(o.w, s.w); }
     else out.push({ ...s });
   }
