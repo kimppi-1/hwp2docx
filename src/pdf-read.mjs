@@ -619,14 +619,15 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   }
   const cellR = cellRatios.length ? mode(cellRatios, 0.02) : null;
   const bodyLines = pages.flatMap(pg => pg.lines);
-  const all = bodyLines.length ? bodyLines : pages.flatMap(pg => pg.tables.flatMap(t => t.grid.cells.flatMap(c => c.lines)));
+  const cellLines = pages.flatMap(pg => pg.tables.flatMap(t => t.grid.cells.flatMap(c => c.lines)));
+  const all = bodyLines.length >= 3 ? bodyLines : (cellLines.length ? cellLines : (bodyLines.length ? bodyLines : []));
 
   // 종이 크기: 표준 크기와 1pt 안쪽이면 그 값으로 (PDF는 A4를 595×841처럼 반올림해 적기도 한다)
   const PAPER = [[595.28, 841.89], [612, 792], [515.91, 728.5], [498.9, 708.66], [841.89, 1190.55], [419.53, 595.28]];
   const snapPaper = (w, h) => { for (const [a, b] of PAPER) { if (Math.abs(w - a) < 1.2 && Math.abs(h - b) < 1.2) return [a, b]; if (Math.abs(w - b) < 1.2 && Math.abs(h - a) < 1.2) return [b, a]; } return [w, h]; };
   const [W, H] = snapPaper(pages[0].W, pages[0].H);
   const S = mode(all.flatMap(l => Array(Math.max(1, l.chars.length)).fill(l.size)));
-  const L = mode(all.map(l => l.x0));
+  let L = mode(all.map(l => l.x0));
   // 오른쪽 끝: 꽉 찬 줄들의 끝 (오른쪽으로 가장 많이 몰린 값)
   const ends = all.map(l => l.x1).sort((a, b) => a - b);
   const p95 = ends[Math.min(ends.length - 1, Math.floor(ends.length * 0.95))];
@@ -637,7 +638,23 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   // 양쪽 정렬 문서인가: 꽉 찬 줄이 오른쪽 끝에 딱 맞춰져 있으면 그렇다. 그런 문서에서는 끝까지 안 찬 줄 = 문단 끝.
   const flush = all.filter(l => Math.abs(l.x1 - flushR) < 0.8).length;
   const justified = flush >= Math.max(3, all.length * 0.15);
-  const R = Math.max(L + 50, justified ? flushR : raggedR);
+  let R = Math.max(L + 50, justified ? flushR : raggedR);
+  // 표나 본문 그림이 있으면 여백이 그 요소를 침범하지 않도록 확장
+  const allTables = pages.flatMap(pg => pg.tables);
+  const allBlockImages = pages.flatMap(pg => pg.blockImages || []);
+  if (bodyLines.length < 3 && allTables.length) {
+    L = Math.min(...allTables.map(t => t.x0));
+    R = Math.max(...allTables.map(t => t.x1));
+  } else {
+    for (const t of allTables) {
+      if (t.x0 < L) L = t.x0;
+      if (t.x1 > R) R = t.x1;
+    }
+    for (const im of allBlockImages) {
+      if (im.x0 < L) L = im.x0;
+      if (im.x1 > R) R = im.x1;
+    }
+  }
   const center = (L + R) / 2;
   // 기본 줄 간격(기준선 사이)
   // 글자 크기별 줄 간격: 그 크기의 이웃 줄 사이 거리 중, 충분히 자주 나오는 것 가운데 가장 작은 값(문단 안 줄 간격)
