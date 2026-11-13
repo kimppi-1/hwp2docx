@@ -3,3 +3,7 @@ hwp2docx
 This product includes the HWPX skeleton document from python-hwpx
 (https://pypi.org/project/python-hwpx/), Copyright 2025-2026 airmang,
 licensed under the Apache License, Version 2.0.
+
+This product includes code from kordoc (https://github.com/chrisryugj/kordoc),
+Copyright (c) 2026 chrisryugj, licensed under the MIT License
+(equation conversion and HWP distribution-document decryption; see src/kordoc-vendor.mjs).

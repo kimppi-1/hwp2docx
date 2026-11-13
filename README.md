@@ -52,7 +52,10 @@
 
 ## 한계
 
-- 그림, 그리기 개체, 각주, 수식은 양쪽 모두 아직 옮기지 못합니다. 워드의 머리말·꼬리말, .hwpx를 워드로 바꾸기, 암호 걸린 파일도 아직 안 됩니다.
+- 워드의 머리말·꼬리말, .hwpx를 워드로 바꾸기, 암호 걸린 파일, 한글 3.0 이전(.hwp 3.x) 파일, .doc는 아직 안 됩니다.
+- 수식은 한글 수식 스크립트 ↔ 워드 수식(OMML)으로 다시 짓습니다. 분수·근호·첨자·∑∫·괄호·행렬·경우(cases)·강세 기호는 옮기지만, 글꼴 지시(rm·it·bold)와 글자 크기 비율(scale)은 버리고 세세한 간격은 각 프로그램의 수식 조판을 따릅니다. 워드→한글 수식의 크기는 어림값이며 한글이 열 때 다시 그립니다.
+- 각주·미주의 번호는 한글처럼 '1)' 모양으로 맞추지만, 번호 모양(로마 숫자 등)·각주 구분선 길이·각주 사이 간격은 각 프로그램의 기본값을 따릅니다.
+- 표 캡션은 표 위·아래 문단으로 옮깁니다. 왼쪽·오른쪽 캡션은 표 아래로 옮깁니다.
 - 워드 → 한글: 세로로 합친 칸이 쪽 끝에 걸리면 한글은 그 칸 중간에서 나누지 못해 표가 다음 쪽으로 넘어갈 수 있습니다.
 - 워드 → 한글의 줄 높이(1.728배)는 맑은 고딕으로만 확인했습니다. 다른 글꼴은 같은 규칙으로 어림한 값입니다.
 - 굵은 영문·숫자는 워드가 굵은 글꼴 파일의 폭을, 한글은 보통 글꼴 폭을 써서 조금 다릅니다.
@@ -76,6 +79,14 @@ PDF 안 글자의 자리·크기·글꼴·색·굵기를 읽어 문단을 되살
 node cli-pdf.mjs 문서.pdf          # 문서.hwpx
 node cli-pdf.mjs 문서.pdf 이름 --docx
 ```
+
+## 수식·각주·캡션·배포용 문서 (0.6)
+
+- **수식**: 한글 수식(.hwp의 수식 개체)은 워드 수식으로, 워드 수식은 한글 수식(.hwpx)으로 바뀝니다. 한글 수식 스크립트 ↔ LaTeX 변환은 [kordoc](https://github.com/chrisryugj/kordoc)(MIT)의 변환기를 쓰고(`src/kordoc-vendor.mjs`), 한글 수식에서 흔한 표기(`a^3 over b^2`의 묶음 순서, `int from 0 to 3`, 대문자 `SUM`·`LEFT`, `^3sqrt`)는 `src/hwp-equation.mjs`가 먼저 정리합니다. LaTeX → 워드 수식은 `src/latex-omml.mjs`.
+- **각주·미주**: 양쪽 모두 옮깁니다. 본문의 참조 번호와 각주 글 앞 번호를 한글처럼 '1)'로 맞추고, 번호 매기기는 각 프로그램에 맡깁니다. 한글→워드→한글로 왕복해도 ')'가 겹치지 않습니다.
+- **표 캡션**: 한글 표의 캡션을 표 위·아래 문단으로 옮깁니다. (전에는 캡션이 있는 표에서 변환이 멈췄습니다.)
+- **배포용 문서**: 한글의 '배포용 문서'로 저장된 파일도 본문을 풀어 변환합니다(방식은 kordoc의 것을 따름). 배포용은 작성자가 편집·복사를 막아 둔 문서이니, 변환은 작성자의 뜻을 존중하는 범위에서 써 주세요.
+- **튼튼함**: 개체 하나를 읽다 실패해도 문서 전체 변환은 이어 갑니다. 공개된 시험용 HWP 151개(pyhwp, hwp.js, hwp-rs, rhwp)를 모두 변환해 보았고 멈춘 파일은 없습니다(이전 버전은 9개에서 멈춤).
 
 ## 다른 앱에서 쓰기
 
@@ -115,6 +126,7 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 
 - `src/hwpx-skeleton.mjs`의 HWPX 기본 틀은 [python-hwpx](https://pypi.org/project/python-hwpx/)의 Skeleton.hwpx에서 가져왔습니다 (Apache License 2.0, Copyright 2025-2026 airmang). `NOTICE` 참고.
 - [cfb](https://github.com/SheetJS/js-cfb) (Apache-2.0), [fflate](https://github.com/101arrowz/fflate) (MIT)
+- 수식 변환(한글 수식 ↔ LaTeX, 워드 수식 → LaTeX)과 배포용 문서의 AES 복호: [kordoc](https://github.com/chrisryugj/kordoc) 4.24.74 (MIT, Copyright (c) 2026 chrisryugj) — `src/kordoc-vendor.mjs`에 묶어 넣음. 워드 수식 배열(eqArr)을 줄 단위·cases로 읽도록 조금 고침.
 
 ---
 
@@ -127,7 +139,8 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - **Hangul (.hwp) → Word (.docx)**: fonts, size, color, letter spacing, character width, line spacing, margins and tables carry over. Line heights and page breaks follow where Hangul actually laid out each line.
 - **Word (.docx) → Hangul (.hwpx)**: styles, theme fonts, numbering and tables (merged cells, borders, shading, cell margins) are resolved and written as HWPX. Opens in Hangul 2014 or later.
 - **PDF → Hangul (.hwpx)** (or Word): the position, size, font, color and weight of each character are read to rebuild paragraphs, margins, line spacing and page breaks. Tables and colored boxes are rebuilt from the drawn lines and cell shading. PDFs saved from Hangul or Word convert best.
-- **Not yet supported**: images, drawing objects, text boxes, footnotes, equations, Word headers/footers, .hwpx → Word, password-protected files, .doc, scanned PDFs.
+- **Equations, footnotes/endnotes, table captions** carry over in both directions (Hangul equation script ↔ Word OMML, using the converter from [kordoc](https://github.com/chrisryugj/kordoc), MIT). Hangul 'distribution' (read-only) documents can be opened.
+- **Not yet supported**: Word headers/footers, .hwpx → Word, password-protected files, HWP 3.x, .doc.
 - **In other apps**: include `hwp2docx.bundle.js` (and `vendor/pdfjs/` for PDF) and call `Hwp2Docx.hwpToDocx`, `docxToHwpx`, `pdfToHwpx` or `pdfToDocx` (see the table in "다른 앱에서 쓰기" above).
 - **Command line**: `node cli.mjs file.hwp`, `node cli-docx.mjs file.docx`, `node cli-pdf.mjs file.pdf`.
 - **License**: MIT.
@@ -139,7 +152,8 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - **在线使用**：https://kimppi-1.github.io/hwp2docx/ ——把文件拖到页面上即可，无需安装。页面支持韩语、英语、中文和日语。
 - **隐私**：转换完全在浏览器内完成，文件不会上传。
 - Hangul（.hwp）→ Word（.docx）、Word（.docx）→ Hangul（.hwpx）、PDF → Hangul（.hwpx，也可转为 Word）。字体、字号、颜色、字间距、行距、页边距和表格都会原样保留。
-- 暂不支持：图片、绘图对象、文本框、脚注、公式、Word 页眉页脚、.hwpx 转 Word、加密文件、.doc、扫描版 PDF。
+- 公式、脚注/尾注、表格标题可双向转换。
+- 暂不支持：Word 页眉页脚、.hwpx 转 Word、加密文件、HWP 3.x、.doc。
 - 许可证：MIT。
 
 ## 日本語
@@ -149,5 +163,6 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - **使う**：https://kimppi-1.github.io/hwp2docx/ — ファイルをページにドロップするだけで、インストールは不要です。画面は韓国語・英語・中国語・日本語に対応しています。
 - **プライバシー**：変換はすべてブラウザ内で行われ、ファイルはアップロードされません。
 - Hangul（.hwp）→ Word（.docx）、Word（.docx）→ Hangul（.hwpx）、PDF → Hangul（.hwpx、Word にも変換可）。フォント、サイズ、色、字間、行間、余白、表をそのまま移します。
-- まだ対応していないもの：画像、図形、テキストボックス、脚注、数式、Word のヘッダー・フッター、.hwpx→Word、パスワード付きファイル、.doc、スキャンした PDF。
+- 数式・脚注/文末脚注・表のキャプションは双方向に変換できます。
+- まだ対応していないもの：Word のヘッダー・フッター、.hwpx→Word、パスワード付きファイル、HWP 3.x、.doc。
 - ライセンス：MIT。
