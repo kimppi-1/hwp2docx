@@ -683,7 +683,10 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
   const topBase = Math.min(...pages.filter(p => p.lines.length || p.tables.length || p.blockImages?.length).map(pageTop));
   const bodyTop = Math.max(10, topBase);
   const bodyBottom = Math.max(...pages.filter(p => p.lines.length || p.tables.length || p.blockImages?.length).map(pageBottom));
-  const page = { w: W, h: H, left: L, right: Math.max(10, W - R), top: bodyTop, bottom: Math.max(10, H - bodyBottom - 1) };
+  const bottomMargin = pages.length === 1
+    ? Math.max(10, Math.min(25, H - bodyBottom - 12))
+    : Math.max(10, H - bodyBottom - 1);
+  const page = { w: W, h: H, left: L, right: Math.max(10, W - R), top: bodyTop, bottom: bottomMargin };
 
   const lineToPage = new Map(); pages.forEach(pg => pg.lines.forEach(l => lineToPage.set(l, pg)));
   const blockR = (l, x0b = l.x0) => {
@@ -885,8 +888,12 @@ export async function readPdf(bytes, pdfjs, opts = {}) {
       }
       for (const l of g.lines) for (const c of l.chars) if (c.white && !cell.fill) { c.color = '000000'; c.white = false; report.whiteText++; }
       const chars = joinLines(g.lines);
-      let pp = Math.round((cellR ?? ratioOf(f.size)) * 100);
-      if (g.lines.length > 1 && g.pitch) pp = Math.round(g.pitch / rawOf(f) * 100);
+      let pp = 100;
+      if (g.lines.length > 1 && g.pitch) {
+        pp = Math.min(130, Math.max(100, Math.round(g.pitch / rawOf(f) * 100)));
+      } else if (!g.before && cellR) {
+        pp = Math.min(130, Math.max(100, Math.round(cellR * 100)));
+      }
       const n = g.lines.length - 1, sp = g.lines.slice(0, -1).filter(l => l.trailingSpace).length;
       const y0 = f.y - 0.85 * f.size, y1 = g.lines.at(-1).y + over(g.lines.at(-1).size);
       return { align, left, right: 0, indent, wordBreak: n > 0 && sp === n, before: g.before, pct: pp, size: f.size, runs: toRuns(chars), _y0: y0, _y1: y1 };

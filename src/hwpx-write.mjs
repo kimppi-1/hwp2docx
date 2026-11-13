@@ -402,7 +402,7 @@ export function buildHwpx(model, opts = {}) {
     // 워드 2010 이전 호환 모드에서는 표 들여쓰기가 첫 칸 안 글자 위치 기준이다 → 테두리 위치로 바꾼다
     // 표를 붙든 빈 문단은 표 아래에 한 줄을 만든다 → 1pt 고정 줄로 거의 없앤다
     const holder = paraPr({ align: 'LEFT', intent: 0, left: 0, right: 0, prev: H(env.before || 0), next: 0, lineType: 'FIXED', lineValue: 100, tab: 0, keepWord: true, widow: false, keepNext: false, keepLines: false, pageBreakBefore: false, autoEng: false, autoNum: false, border: 2, bo: [0, 0, 0, 0], connect: false });
-    const cp = charPr(env.markR ?? {});
+    const cp = charPr({ ...(env.markR ?? {}), sz: 2 });
     return `<hp:p id="${nextId()}" paraPrIDRef="${holder}" styleIDRef="0" pageBreak="${env.pageBreak ? 1 : 0}" columnBreak="0" merged="0">${env.lead || ''}<hp:run charPrIDRef="${cp}">${x}<hp:t/></hp:run></hp:p>`;
   }
 
