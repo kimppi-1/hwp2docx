@@ -126,7 +126,7 @@ export function buildHwpx(model, opts = {}) {
     let x = '';
     for (const t of items) {
       const type = TYPE[t.val] ?? 'LEFT', lead = LEAD[t.leader] ?? 'NONE';
-      x += `<hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:tabItem pos="${H(t.pos)}" type="${type}" leader="${lead}" unit="HWPUNIT"/></hp:case><hp:default><hh:tabItem pos="${H(t.pos) * 2}" type="${type}" leader="${lead}"/></hp:default></hp:switch>`;
+      x += `<hh:tabItem pos="${H(t.pos) * 2}" type="${type}" leader="${lead}"/>`;
     }
     const key = (auto ? 1 : 0) + x;
     if (tabKey.has(key)) return tabKey.get(key);
@@ -142,14 +142,14 @@ export function buildHwpx(model, opts = {}) {
     const key = JSON.stringify(pp);
     if (ppKey.has(key)) return ppKey.get(key);
     const id = 20 + paraPrs.length;
-    const m = (name, v) => [`<hc:${name} value="${v}" unit="HWPUNIT"/>`, `<hc:${name} value="${v * 2}" unit="HWPUNIT"/>`];
+    const m = (name, v) => `<hc:${name} value="${v * 2}" unit="HWPUNIT"/>`;
     const parts = [m('intent', pp.intent), m('left', pp.left), m('right', pp.right), m('prev', pp.prev), m('next', pp.next)];
-    const ls = (dbl) => `<hh:lineSpacing type="${pp.lineType}" value="${pp.lineType === 'PERCENT' || !dbl ? pp.lineValue : pp.lineValue * 2}" unit="HWPUNIT"/>`;
+    const ls = `<hh:lineSpacing type="${pp.lineType}" value="${pp.lineType === 'PERCENT' ? pp.lineValue : pp.lineValue * 2}" unit="HWPUNIT"/>`;
     let x = `<hh:paraPr id="${id}" tabPrIDRef="${pp.tab}" condense="0" fontLineHeight="0" snapToGrid="0" suppressLineNumbers="0" checked="0" textDir="LTR">`;
     x += `<hh:align horizontal="${pp.align}" vertical="BASELINE"/><hh:heading type="NONE" idRef="0" level="0"/>`;
     x += `<hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="${pp.keepWord ? 'KEEP_WORD' : 'BREAK_WORD'}" widowOrphan="${pp.widow ? 1 : 0}" keepWithNext="${pp.keepNext ? 1 : 0}" keepLines="${pp.keepLines ? 1 : 0}" pageBreakBefore="${pp.pageBreakBefore ? 1 : 0}" lineWrap="BREAK"/>`;
     x += `<hh:autoSpacing eAsianEng="${pp.autoEng ? 1 : 0}" eAsianNum="${pp.autoNum ? 1 : 0}"/>`;
-    x += `<hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin>${parts.map(p => p[0]).join('')}</hh:margin>${ls(false)}</hp:case><hp:default><hh:margin>${parts.map(p => p[1]).join('')}</hh:margin>${ls(true)}</hp:default></hp:switch>`;
+    x += `<hh:margin>${parts.join('')}</hh:margin>${ls}`;
     x += `<hh:border borderFillIDRef="${pp.border}" offsetLeft="${pp.bo[0]}" offsetRight="${pp.bo[1]}" offsetTop="${pp.bo[2]}" offsetBottom="${pp.bo[3]}" connect="${pp.connect ? 1 : 0}" ignoreMargin="0"/>`;
     x += '</hh:paraPr>';
     paraPrs.push(x); ppKey.set(key, id);
