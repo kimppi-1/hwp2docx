@@ -521,7 +521,7 @@ export function buildHwpx(model, opts = {}) {
       const lead = (i === 0 ? env.lead || '' : '') + (floatXml ? `<hp:run charPrIDRef="0">${floatXml}</hp:run>` : '') || undefined;
       if (b.k === 'tbl') { out += tableXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
       if (b.k === 'img') { out += imgBlockXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
-      out += paraXml(b, { lead, before: bef[i], after: aft[i] });
+      out += paraXml(b, { lead, before: bef[i], after: aft[i], pageBreak: b.pageBreak });
     });
     return out;
   }
