@@ -84,9 +84,11 @@ node cli-pdf.mjs 문서.pdf 이름 --docx
 
 - **책 사진 → 한글**: 휴대폰으로 찍은 책 쪽 사진(JPG·PNG·HEIC/HEIF·TIFF·WebP·AVIF·BMP·GIF — 형식은 확장자가 아니라 파일 앞머리로 알아냄, 여러 장이면 파일 이름 순서가 쪽 순서)이나 스캔한 PDF를 넣으면, 종이 네 모서리를 찾아 반듯하게 편 뒤 글자를 읽고(tesseract.js, 한국어+영어 — 헬라어(다성조 그리스어)가 섞인 쪽은 헬라어로 한 번 더 읽어 그 자리만 바꿔 넣음, 헬라어는 Times New Roman 글꼴로. 히브리어가 섞인 쪽은 히브리어로도 읽은 뒤, 스트롱 번호와 읽힌 자음으로 어느 구절인지 찾아 히브리어 성경 본문(WLC, 모음 부호 포함)의 낱말로 바꿔 넣고 오른쪽→왼쪽 읽는 순서로 저장), **판형·여백·글자 크기·줄 간격·자간·줄당 글자 수·쪽당 줄 수·첫 줄 들여쓰기·문단**을 재서 같은 모양의 .hwpx로 만듭니다. 잰 값은 결과 칸에 보여 줍니다.
   - 판형은 사진 비율로 고르거나(신국판·국판 등) 설정에서 직접 고릅니다. 자간은 꽉 찬 줄의 글자가 한글에서도 판면 폭을 정확히 채우도록 계산합니다.
-  - 머리글(책 제목·장 제목)과 쪽 번호는 본문에서 뺍니다. 펼친 두 쪽 사진은 왼쪽·오른쪽으로 나눕니다.
+  - 휜 쪽 펴기: 글줄들이 놓인 모양으로 종이가 어떻게 휘었는지(3차 곡면)와 카메라 위치를 계산해 종이를 평평하게 펼친 뒤 읽습니다(거의 평평한 스캔은 그대로).
+  - '줄 바뀌는 자리 고정'(기본)에서는 꼬리말·머리말(쪽 번호, 책·장 제목)도 원본 자리·크기대로 넣습니다. 이어진 쪽이면 쪽 번호가 1씩 늘어나도록 잘못 읽은 번호를 바로잡습니다. 이 설정을 끄면 본문에서 뺍니다. 펼친 두 쪽 사진은 왼쪽·오른쪽으로 나눕니다.
+  - 작은 글씨(성경 장절 표시 '창세기 32:26', 절 번호)는 크게 키워 다시 읽고, 굵은 제목은 굵게 만듭니다.
   - '줄 바뀌는 자리 고정'을 켜면 줄마다 원본과 같은 글자가 들어갑니다.
-  - 한계: 글자는 문자 인식이라 일부 틀릴 수 있고(깨끗한 사진에서 약 98%), 글꼴 이름은 알아내지 못해 함초롬바탕으로 씁니다. 크게 휜 쪽(책 가운데 골)은 펴지 못합니다.
+  - 한계: 글자는 문자 인식이라 일부 틀릴 수 있고(깨끗한 사진에서 약 98%), 글꼴 이름은 알아내지 못해 함초롬바탕으로 씁니다. 제본 바로 옆처럼 아주 심하게 휜 곳은 덜 펴질 수 있습니다.
   - 코드: `src/photo-read.mjs`(펴기·재기·문단 모델), `src/photo-web.mjs`(브라우저 그림 해독·OCR)
 - **.hwpx → 워드**: [rhwp](https://github.com/edwardkim/rhwp)(MIT) 엔진으로 .hwpx를 .hwp로 바꾼 뒤 기존 한글→워드 변환기에 넘깁니다. 공개된 시험용 .hwpx 120개 중 119개 변환(나머지 1개는 일부러 망가뜨린 파일).
 - **.hwp로도 받기**: 워드→한글 설정에서 켜면 .hwpx와 함께 .hwp도 만듭니다(옛 한글 버전용).
@@ -140,6 +142,7 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - `src/hwpx-skeleton.mjs`의 HWPX 기본 틀은 [python-hwpx](https://pypi.org/project/python-hwpx/)의 Skeleton.hwpx에서 가져왔습니다 (Apache License 2.0, Copyright 2025-2026 airmang). `NOTICE` 참고.
 - [cfb](https://github.com/SheetJS/js-cfb) (Apache-2.0), [fflate](https://github.com/101arrowz/fflate) (MIT)
 - [rhwp](https://github.com/edwardkim/rhwp) @rhwp/core 0.9.0 (MIT, Copyright (c) 2025-2026 Edward Kim) — .hwpx 읽기·.hwp 저장. 저장소에 넣지 않고 쓸 때 jsDelivr에서 받음.
+- 휜 책 쪽 펴기(`src/page-dewarp.mjs`): [page_dewarp](https://github.com/mzucker/page_dewarp)(Matt Zucker) · [page-dewarp](https://github.com/lmmx/page-dewarp) · [page-dewarp-js](https://github.com/erykpiast/page-dewarp-js)의 '입체 종이 모형(cubic sheet)' 방식을 OpenCV 없이 다시 짬 (모두 MIT)
 - [Open Scriptures Hebrew Bible](https://github.com/openscriptures/morphhb) (CC BY 4.0, 본문은 퍼블릭 도메인 WLC) — 히브리어 성경 본문·스트롱 번호 (vendor/wlc)
 - [tesseract.js](https://github.com/naptha/tesseract.js) (Apache-2.0) — 사진·스캔 글자 인식 (언어 자료 kor·eng·grc·heb는 tessdata, Apache-2.0, 처음 쓸 때 jsDelivr에서 받음)
 - [heic-to](https://github.com/hoppergee/heic-to) 1.6.7 (LGPL-3.0, libheif) — 아이폰 HEIC·HEIF 사진 풀기. 고치지 않은 그대로 쓸 때 jsDelivr에서 받음.

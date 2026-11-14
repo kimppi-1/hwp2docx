@@ -231,7 +231,7 @@
   </footer>
 </div>
 
-<script src="hwp2docx.bundle.js?v=0.7.6"></script>
+<script src="hwp2docx.bundle.js?v=0.7.7"></script>
 <script>
 // 화면 글 — 한국어(ko)·영어(en)·중국어(zh)·일본어(ja)
 window.I18N = {
@@ -652,7 +652,7 @@ window.I18N_NOTES = [
     const m = r.report.measured, mm = m.marginsMm;
     const extra = el('div', 'extra');
     extra.append(el('p', 'note', t('measured', { size: `${m.bookSize} ${m.pageMm[0]}×${m.pageMm[1]}mm`, t: mm.top, b: mm.bottom, l: mm.left, r: mm.right, pt: m.fontPt, lp: m.linePct, sp: m.spacingPct, cpl: m.charsPerLine, lpp: m.linesPerPage })));
-    if (r.report.headers.length || r.report.pagenos.length) extra.append(el('p', 'note', t('droppedHead', { list: [...r.report.headers, ...r.report.pagenos].slice(0, 6).join(', ') })));
+    if (!$('bookLines').checked && (r.report.headers.length || r.report.pagenos.length)) extra.append(el('p', 'note', t('droppedHead', { list: [...r.report.headers, ...r.report.pagenos].slice(0, 6).join(', ') })));
     if (!r.report.pageFound) extra.append(el('p', 'note', t('notPage')));
     if (r.report.spread) extra.append(el('p', 'note', t('spreadNote')));
     row.append(extra);

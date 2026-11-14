@@ -22,3 +22,11 @@ Licensed under the Creative Commons Attribution 4.0 International License (CC BY
 Based on the Westminster Leningrad Codex, which is in the public domain.
 Changes: cantillation marks removed; word division and Strong's numbers (lemma) reformatted
 into one line per verse.
+
+------------------------------------------------------------------------
+Curved-page flattening (src/page-dewarp.mjs) re-implements, without OpenCV, the cubic-sheet
+page dewarping method of:
+  page_dewarp, Copyright (c) 2016 Matt Zucker — https://github.com/mzucker/page_dewarp (MIT License)
+  page-dewarp, Copyright (c) Louis Maddox — https://github.com/lmmx/page-dewarp (MIT License)
+  page-dewarp-js, Copyright (c) 2025 Eryk Napierała — https://github.com/erykpiast/page-dewarp-js (MIT License)
+    (the Powell / Brent minimiser follows this JavaScript port)
