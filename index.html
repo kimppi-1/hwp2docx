@@ -633,7 +633,8 @@ window.I18N_NOTES = [
     let r;
     try {
       const files = [];
-      for (const f of list) files.push(f.bytes ? f : { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+      // 요즘 크롬은 File에도 bytes() 함수가 있어, 그 이름만 보고 판단하면 안 된다
+      for (const f of list) files.push(f.bytes instanceof Uint8Array ? f : { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
       r = await Hwp2Docx.photosToHwpx(files, { size: $('bookSize').value || undefined, keepLines: $('bookLines').checked, pageBreaks: $('bookPages').checked, onProgress: (p) => { meta.textContent = t('reading', { n: p.page }); } });
     } catch (e) {
       console.error(e);

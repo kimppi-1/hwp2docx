@@ -442,7 +442,8 @@ export async function readPhotos(files, { decode, ocr, size, font, keepLines, pa
   const pages = [];
   let n = 0;
   for (const f of files) {
-    const img = await decode(f.bytes, f.name);
+    const bytes = f.bytes instanceof Uint8Array ? f.bytes : f.arrayBuffer ? new Uint8Array(await f.arrayBuffer()) : new Uint8Array(f.bytes);
+    const img = await decode(bytes, f.name);
     for (const part of rectifyPhoto(img)) {
       onProgress?.({ step: 'ocr', page: ++n });
       const png = grayPng(part.g, part.w, part.h);
