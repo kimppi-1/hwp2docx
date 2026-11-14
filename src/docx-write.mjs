@@ -385,7 +385,7 @@ export function buildDocx(doc, opts = {}) {
   }
 
   function headText(ps) {
-    if (!ps.headType) return '';
+    if (!ps?.headType) return '';
     if (ps.headType === 3) { const b = doc.bullets[ps.numberingId - 1]; return (b?.char ?? '•') + ' '; }
     const id = ps.headType === 1 ? 0 : ps.numberingId;
     const nb = doc.numberings[ps.headType === 1 ? 0 : ps.numberingId - 1];
@@ -405,7 +405,7 @@ export function buildDocx(doc, opts = {}) {
     let prevTopY = null;
     for (const para of paras) {
       report.stats.paragraphs++;
-      const ps = doc.paraShapes[para.paraShape] ?? doc.paraShapes[0];
+      const ps = doc.paraShapes[para.paraShape] ?? doc.paraShapes[0] ?? { lineSpacingType: 0, align: 0, breakLatin: 0, breakHangul: 1, headType: 0, left: 0, right: 0, indent: 0, before: 0, after: 0, lineSpacing: 160, tabDefId: 0, numberingId: 0, borderFillId: 0 };
       let forceBreak = !!(para.divide & 4);
       if (!env.inCell && opts.keepPageBreaks !== false && para.lineSegs.length) {
         const y = para.lineSegs[0].y;

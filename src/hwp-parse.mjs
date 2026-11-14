@@ -300,6 +300,13 @@ function parseCtrl(node, ctx) {
         }
       }
       ctrl.cells = cells;
+      // 망가진 파일 대비: 행·열 수와 병합 범위를 실제 칸에 맞게 줄인다
+      if (cells.length) {
+        const mr = Math.max(...cells.map(c => (c.row ?? 0) + 1)), mc = Math.max(...cells.map(c => (c.col ?? 0) + 1));
+        if (!(ctrl.rows <= mr * 4 + 4)) ctrl.rows = mr;
+        if (!(ctrl.cols <= mc * 4 + 4)) ctrl.cols = mc;
+        for (const c of cells) { c.rowSpan = Math.max(1, Math.min(c.rowSpan || 1, ctrl.rows - c.row)); c.colSpan = Math.max(1, Math.min(c.colSpan || 1, ctrl.cols - c.col)); }
+      }
       break;
     }
     case 'head': case 'foot': {

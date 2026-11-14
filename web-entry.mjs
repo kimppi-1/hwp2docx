@@ -3,3 +3,7 @@ export { hwpToDocx, docxToHwpx } from './src/index.mjs';
 export { styledToHwpx, styledToDocx, templateFromHwp, hwpToStyled, parseStyled, DEFAULT_TEMPLATE } from './src/styled.mjs';
 export { pdfToHwpx, pdfToDocx } from './src/pdf-convert.mjs';
 export { HANGUL_ADVANCE, SPACE_ADVANCE } from './src/font-metrics.mjs';
+export { hwpxToDocx, docxToHwp } from './src/index.mjs';
+export { hwpxToHwp, renderPagesSvg } from './src/rhwp-bridge.mjs';
+export { photosToHwpx } from './src/photo-web.mjs';
+export { BOOK_SIZES } from './src/photo-read.mjs';

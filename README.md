@@ -52,7 +52,7 @@
 
 ## 한계
 
-- 워드의 머리말·꼬리말, .hwpx를 워드로 바꾸기, 암호 걸린 파일, 한글 3.0 이전(.hwp 3.x) 파일, .doc는 아직 안 됩니다.
+- 워드의 머리말·꼬리말, 암호 걸린 파일, 한글 3.0 이전(.hwp 3.x) 파일, .doc, 아이폰 HEIC 사진(JPG로 바꿔 넣기)은 아직 안 됩니다.
 - 수식은 한글 수식 스크립트 ↔ 워드 수식(OMML)으로 다시 짓습니다. 분수·근호·첨자·∑∫·괄호·행렬·경우(cases)·강세 기호는 옮기지만, 글꼴 지시(rm·it·bold)와 글자 크기 비율(scale)은 버리고 세세한 간격은 각 프로그램의 수식 조판을 따릅니다. 워드→한글 수식의 크기는 어림값이며 한글이 열 때 다시 그립니다.
 - 각주·미주의 번호는 한글처럼 '1)' 모양으로 맞추지만, 번호 모양(로마 숫자 등)·각주 구분선 길이·각주 사이 간격은 각 프로그램의 기본값을 따릅니다.
 - 표 캡션은 표 위·아래 문단으로 옮깁니다. 왼쪽·오른쪽 캡션은 표 아래로 옮깁니다.
@@ -79,6 +79,19 @@ PDF 안 글자의 자리·크기·글꼴·색·굵기를 읽어 문단을 되살
 node cli-pdf.mjs 문서.pdf          # 문서.hwpx
 node cli-pdf.mjs 문서.pdf 이름 --docx
 ```
+
+## 책·문서 사진 → 한글, .hwpx → 워드, .hwp로 받기 (0.7)
+
+- **책 사진 → 한글**: 휴대폰으로 찍은 책 쪽 사진(JPG·PNG, 여러 장이면 파일 이름 순서가 쪽 순서)이나 스캔한 PDF를 넣으면, 종이 네 모서리를 찾아 반듯하게 편 뒤 글자를 읽고(tesseract.js, 한국어+영어), **판형·여백·글자 크기·줄 간격·자간·줄당 글자 수·쪽당 줄 수·첫 줄 들여쓰기·문단**을 재서 같은 모양의 .hwpx로 만듭니다. 잰 값은 결과 칸에 보여 줍니다.
+  - 판형은 사진 비율로 고르거나(신국판·국판 등) 설정에서 직접 고릅니다. 자간은 꽉 찬 줄의 글자가 한글에서도 판면 폭을 정확히 채우도록 계산합니다.
+  - 머리글(책 제목·장 제목)과 쪽 번호는 본문에서 뺍니다. 펼친 두 쪽 사진은 왼쪽·오른쪽으로 나눕니다.
+  - '줄 바뀌는 자리 고정'을 켜면 줄마다 원본과 같은 글자가 들어갑니다.
+  - 한계: 글자는 문자 인식이라 일부 틀릴 수 있고(깨끗한 사진에서 약 98%), 글꼴 이름은 알아내지 못해 함초롬바탕으로 씁니다. 크게 휜 쪽(책 가운데 골)은 펴지 못합니다.
+  - 코드: `src/photo-read.mjs`(펴기·재기·문단 모델), `src/photo-web.mjs`(브라우저 그림 해독·OCR)
+- **.hwpx → 워드**: [rhwp](https://github.com/edwardkim/rhwp)(MIT) 엔진으로 .hwpx를 .hwp로 바꾼 뒤 기존 한글→워드 변환기에 넘깁니다. 공개된 시험용 .hwpx 120개 중 119개 변환(나머지 1개는 일부러 망가뜨린 파일).
+- **.hwp로도 받기**: 워드→한글 설정에서 켜면 .hwpx와 함께 .hwp도 만듭니다(옛 한글 버전용).
+- rhwp 엔진(약 27MB)은 .hwpx를 넣거나 .hwp 받기를 켰을 때만 jsDelivr에서 한 번 받습니다. 연결 코드는 `src/rhwp-bridge.mjs`.
+- 망가진 표(행·열 수가 비정상)도 멈추지 않도록 막았습니다.
 
 ## 수식·각주·캡션·배포용 문서 (0.6)
 
@@ -126,6 +139,8 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 
 - `src/hwpx-skeleton.mjs`의 HWPX 기본 틀은 [python-hwpx](https://pypi.org/project/python-hwpx/)의 Skeleton.hwpx에서 가져왔습니다 (Apache License 2.0, Copyright 2025-2026 airmang). `NOTICE` 참고.
 - [cfb](https://github.com/SheetJS/js-cfb) (Apache-2.0), [fflate](https://github.com/101arrowz/fflate) (MIT)
+- [rhwp](https://github.com/edwardkim/rhwp) @rhwp/core 0.9.0 (MIT, Copyright (c) 2025-2026 Edward Kim) — .hwpx 읽기·.hwp 저장. 저장소에 넣지 않고 쓸 때 jsDelivr에서 받음.
+- [tesseract.js](https://github.com/naptha/tesseract.js) (Apache-2.0) — 사진·스캔 글자 인식
 - 수식 변환(한글 수식 ↔ LaTeX, 워드 수식 → LaTeX)과 배포용 문서의 AES 복호: [kordoc](https://github.com/chrisryugj/kordoc) 4.24.74 (MIT, Copyright (c) 2026 chrisryugj) — `src/kordoc-vendor.mjs`에 묶어 넣음. 워드 수식 배열(eqArr)을 줄 단위·cases로 읽도록 조금 고침.
 
 ---
@@ -140,7 +155,8 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - **Word (.docx) → Hangul (.hwpx)**: styles, theme fonts, numbering and tables (merged cells, borders, shading, cell margins) are resolved and written as HWPX. Opens in Hangul 2014 or later.
 - **PDF → Hangul (.hwpx)** (or Word): the position, size, font, color and weight of each character are read to rebuild paragraphs, margins, line spacing and page breaks. Tables and colored boxes are rebuilt from the drawn lines and cell shading. PDFs saved from Hangul or Word convert best.
 - **Equations, footnotes/endnotes, table captions** carry over in both directions (Hangul equation script ↔ Word OMML, using the converter from [kordoc](https://github.com/chrisryugj/kordoc), MIT). Hangul 'distribution' (read-only) documents can be opened.
-- **Not yet supported**: Word headers/footers, .hwpx → Word, password-protected files, HWP 3.x, .doc.
+- **New in 0.7**: phone photos of book pages (or scanned PDFs) → Hangul with the page size, margins, type size, line spacing, letter spacing and characters per line measured and reproduced; .hwpx → Word and .hwp output via the [rhwp](https://github.com/edwardkim/rhwp) engine (MIT).
+- **Not yet supported**: Word headers/footers, password-protected files, HWP 3.x, .doc.
 - **In other apps**: include `hwp2docx.bundle.js` (and `vendor/pdfjs/` for PDF) and call `Hwp2Docx.hwpToDocx`, `docxToHwpx`, `pdfToHwpx` or `pdfToDocx` (see the table in "다른 앱에서 쓰기" above).
 - **Command line**: `node cli.mjs file.hwp`, `node cli-docx.mjs file.docx`, `node cli-pdf.mjs file.pdf`.
 - **License**: MIT.
@@ -153,7 +169,8 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - **隐私**：转换完全在浏览器内完成，文件不会上传。
 - Hangul（.hwp）→ Word（.docx）、Word（.docx）→ Hangul（.hwpx）、PDF → Hangul（.hwpx，也可转为 Word）。字体、字号、颜色、字间距、行距、页边距和表格都会原样保留。
 - 公式、脚注/尾注、表格标题可双向转换。
-- 暂不支持：Word 页眉页脚、.hwpx 转 Word、加密文件、HWP 3.x、.doc。
+- 新增：书页照片（或扫描 PDF）→ Hangul，测量并还原开本、页边距、字号、行距、字距和每行字数；.hwpx → Word，以及输出 .hwp。
+- 暂不支持：Word 页眉页脚、加密文件、HWP 3.x、.doc。
 - 许可证：MIT。
 
 ## 日本語
@@ -164,5 +181,6 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - **プライバシー**：変換はすべてブラウザ内で行われ、ファイルはアップロードされません。
 - Hangul（.hwp）→ Word（.docx）、Word（.docx）→ Hangul（.hwpx）、PDF → Hangul（.hwpx、Word にも変換可）。フォント、サイズ、色、字間、行間、余白、表をそのまま移します。
 - 数式・脚注/文末脚注・表のキャプションは双方向に変換できます。
-- まだ対応していないもの：Word のヘッダー・フッター、.hwpx→Word、パスワード付きファイル、HWP 3.x、.doc。
+- 新機能：本のページの写真（またはスキャン PDF）→ Hangul。判型・余白・文字サイズ・行間・字間・1行の文字数を測って再現します。.hwpx → Word と .hwp 出力にも対応。
+- まだ対応していないもの：Word のヘッダー・フッター、パスワード付きファイル、HWP 3.x、.doc。
 - ライセンス：MIT。
