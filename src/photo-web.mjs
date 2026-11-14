@@ -22,7 +22,7 @@ let workerP = null;
 async function worker(lang) {
   if (!workerP) workerP = (async () => {
     const Tesseract = (await import('tesseract.js')).default ?? (await import('tesseract.js'));
-    const w = await Tesseract.createWorker(lang || 'kor+eng');
+    const w = await Tesseract.createWorker(lang || 'kor');
     await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
     return w;
   })();
