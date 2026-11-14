@@ -360,6 +360,8 @@ function adv(ch, font) {
   if (ch === ' ') return HWP_SPACE;
   const c = ch.codePointAt(0);
   if ((c >= 0xac00 && c <= 0xd7a3) || (c >= 0x3130 && c <= 0x318f) || (c >= 0x4e00 && c <= 0x9fff)) return HANGUL_ADVANCE[font] ?? 1;
+  if ((c >= 0x0300 && c <= 0x036f) || (c >= 0x0591 && c <= 0x05c7 && c !== 0x05be && c !== 0x05c3 && c !== 0x05c0)) return 0;   // 얹는 부호(악센트·모음 부호)는 폭이 없다
+  if (c >= 0x05d0 && c <= 0x05ea) return 0.6;
   if (/[“”‘’「」『』《》〈〉…·]/.test(ch)) return /[…]/.test(ch) ? 1 : 0.5;
   if (/[.,:;!?'"()[\]]/.test(ch)) return 0.3;
   if (/[0-9]/.test(ch)) return 0.55;
@@ -372,6 +374,7 @@ const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length 
 const hangulish = (t) => /[가-힣]/.test(t);
 
 // OCR 결과 다듬기: 한글 사이에 잘못 낀 빈칸, 흔한 오인식
+const isHebrew = t => /[\u05D0-\u05EA]/.test(t) && !/[A-Za-z\uAC00-\uD7A3\u0370-\u03FF]/.test(t);
 function cleanText(t) {
   return t.replace(/\s+/g, ' ').replace(/ ?([.,!?」』”’)]) ?/g, (m, p) => p + ' ').replace(/ ([.,!?])/g, '$1').trim();
 }
@@ -422,8 +425,21 @@ export function measurePages(pages, opts = {}) {
       if (ws.length < 2) continue;
       const gaps = ws.slice(1).map((w, i) => w.x0 - ws[i].x1);
       const g0 = Math.max(0, pct(gaps, 0.2));
-      let t = ws[0].text;
-      ws.slice(1).forEach((w, i) => { t += (gaps[i] > g0 + p.emPx * 0.12 ? ' ' : '') + w.text; });
+      let t;
+      // 한글은 글자 단위로 쪼개 읽히므로 넓은 틈만 띄어쓰기, 영어·헬라어·숫자 낱말끼리는 늘 띄운다
+      const wordy = x => /[A-Za-z0-9\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]$/.test(x);
+      const wordyStart = x => /^[("'‘“]?[A-Za-z0-9\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]/.test(x);
+      const seps = ws.map((w, i) => { if (!i) return ''; const prev = ws[i - 1].text; return gaps[i - 1] > g0 + p.emPx * 0.12 || (wordy(prev) && wordyStart(w.text) && gaps[i - 1] > p.emPx * 0.08) ? ' ' : ''; });
+      // 히브리어는 오른쪽에서 왼쪽으로 읽는다: 이어진 히브리어 낱말들은 순서를 뒤집어 '읽는 순서'로 저장(한글·워드가 오른쪽부터 그려 준다)
+      const toks = ws.map(w => w.text);
+      for (let i = 0; i < toks.length;) {
+        if (!isHebrew(toks[i])) { i++; continue; }
+        let j = i; while (j + 1 < toks.length && isHebrew(toks[j + 1])) j++;
+        const run = toks.slice(i, j + 1).reverse();
+        for (let k = i; k <= j; k++) { toks[k] = run[k - i]; if (k > i) seps[k] = ' '; }
+        i = j + 1;
+      }
+      t = toks.map((x, i) => seps[i] + x).join('');
       l.text = cleanText(t);
     }
   }
@@ -548,11 +564,20 @@ export function buildBookModel(pages, M, opts = {}) {
     if (!exact) flush();
   });
   flush();
-  for (const p of paras) { delete p._big; delete p._centered; delete p._ended; }
+  for (const p of paras) { delete p._big; delete p._centered; delete p._ended; p.runs = p.runs.flatMap(splitGreek); }
   // 줄 그대로 모드는 사진 한 장마다 쪽을 나누므로, 아래 여백은 넘침 막이로 작게(보이는 자리는 같다)
   const page = exact ? { ...M.page, left: Math.max(3 * MM, exLeft), right: 3 * MM, bottom: Math.min(M.page.bottom, 8 * MM) } : M.page;
   if (exact) fitPages(paras, page);
   return { paras, page, notes };
+}
+
+// 원어(헬라어·히브리어) 부분은 그 글자가 다 있는 글꼴로 (한글 글꼴엔 ἐ·ῇ나 히브리어 모음 부호 붙은 글자가 없다)
+export const GREEK_FONT = 'Times New Roman';
+const ORIG = '\\u0370-\\u03FF\\u1F00-\\u1FFF\\u0590-\\u05FF\\uFB1D-\\uFB4F';
+const ORIG_RE = new RegExp(`([${ORIG}](?:[${ORIG}\\u0300-\\u036F.,;:·'’᾽ ]*[${ORIG}.,;:·'’᾽])?)`);
+function splitGreek(r) {
+  if (!new RegExp(`[${ORIG}]`).test(r.text)) return [r];
+  return r.text.split(ORIG_RE).filter(Boolean).map(t => new RegExp(`[${ORIG}]`).test(t) ? { ...r, text: t, font: GREEK_FONT } : { ...r, text: t });
 }
 
 // 사진 한 장 = 한 쪽: 쪽마다 줄들이 판면 높이 안에 들어가도록 줄 사이 여백 → 줄 간격 → 글자 크기 순으로 줄인다

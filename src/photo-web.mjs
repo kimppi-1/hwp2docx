@@ -1,3 +1,5 @@
+import { mergeScript, hasGreekish } from './ocr-merge.mjs';
+import { loadWLC, fixHebrew } from './hebrew-bible.mjs';
 // 브라우저에서 사진 → 한글: 그림 해독은 캔버스, 글자 인식은 tesseract.js (한국어+영어, 처음 한 번 언어 자료를 받음)
 import { readPhotos } from './photo-read.mjs';
 import { bookModelToHwpx } from './pdf-convert.mjs';
@@ -70,26 +72,46 @@ export async function decodeImageBrowser(bytes, name) {
   return { w, h, data: ctx.getImageData(0, 0, w, h).data };
 }
 
-let workerP = null;
-async function worker(lang) {
-  if (!workerP) workerP = (async () => {
+const workers = new Map();
+async function worker(lang = 'kor') {
+  if (!workers.has(lang)) workers.set(lang, (async () => {
     const Tesseract = (await import('tesseract.js')).default ?? (await import('tesseract.js'));
-    const w = await Tesseract.createWorker(lang || 'kor');
+    const w = await Tesseract.createWorker(lang);
     await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
     return w;
-  })();
-  return workerP;
+  })());
+  return workers.get(lang);
 }
-export async function ocrBrowser(png) {
-  const w = await worker();
+async function wordLines(lang, png) {
+  const w = await worker(lang);
   const r = await w.recognize(new Blob([png], { type: 'image/png' }), {}, { blocks: true });
-  const lines = [];
+  const out = [];
   for (const b of r.data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) {
-    const words = (l.words || []).filter(x => x.text?.trim()).map(x => ({ text: x.text, x0: x.bbox.x0, y0: x.bbox.y0, x1: x.bbox.x1, y1: x.bbox.y1 }));
-    if (!words.length) continue;
-    lines.push({ text: words.map(x => x.text).join(' '), words, x0: Math.min(...words.map(x => x.x0)), y0: Math.min(...words.map(x => x.y0)), x1: Math.max(...words.map(x => x.x1)), y1: Math.max(...words.map(x => x.y1)) });
+    const words = (l.words || []).filter(x => x.text?.trim()).map(x => ({ text: x.text, conf: x.confidence, x0: x.bbox.x0, y0: x.bbox.y0, x1: x.bbox.x1, y1: x.bbox.y1 }));
+    if (words.length) out.push(words);
   }
-  return lines;
+  return out;
+}
+// 한국어로 읽고, 한글이 아닌 흐린 글자가 보이면 헬라어+영어, 히브리어로 한 번 더 읽어 그 자리만 바꾼다(성경 주석·원어 사전 등)
+export async function ocrBrowser(png, opts = {}) {
+  let A = await wordLines('kor', png);
+  if (opts.greek !== false && hasGreekish(A.flat())) {
+    try { A = mergeScript(A, await wordLines('grc+eng', png), 'greek'); } catch (e) { console.warn('greek pass', e); }
+    // 그래도 흐린 글자가 남으면 히브리어(모음 부호 포함)로 한 번 더
+    if (hasGreekish(A.flat())) {
+      try {
+        const H = await wordLines('heb+eng', png);
+        A = mergeScript(A, H, 'hebrew', { latin: false });
+        // 히브리어 조각이 보이면 히브리어 성경 본문(모음 부호까지)으로 바로잡는다
+        const hebN = H.flat().filter((w) => /[\u05D0-\u05EA].*[\u05D0-\u05EA]/.test(w.text)).length;
+        if (hebN >= 2 && opts.bible !== false && typeof location !== 'undefined') {
+          const wlc = await loadWLC(new URL('vendor/wlc/wlc.txt.gz', location.href).href);
+          A = fixHebrew(A, H, wlc);
+        }
+      } catch (e) { console.warn('hebrew pass', e); }
+    }
+  }
+  return A.map(words => ({ text: words.map(x => x.text).join(' '), words, x0: Math.min(...words.map(x => x.x0)), y0: Math.min(...words.map(x => x.y0)), x1: Math.max(...words.map(x => x.x1)), y1: Math.max(...words.map(x => x.y1)) }));
 }
 
 // files: [{ name, bytes }] — 쪽 순서대로(파일 이름 순으로 정렬해 넘기면 됨)

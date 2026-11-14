@@ -14,3 +14,11 @@ At runtime (loaded from jsDelivr on demand, not bundled) this product uses rhwp 
 This product bundles UTIF.js (utif2, https://github.com/photopea/UTIF.js), Copyright (c) 2017 Photopea, MIT License.
 At runtime (loaded from jsDelivr on demand, unmodified, not bundled) it uses heic-to (https://github.com/hoppergee/heic-to),
 licensed under LGPL-3.0, which includes libheif.
+
+------------------------------------------------------------------------
+Open Scriptures Hebrew Bible (OSHB) — vendor/wlc/wlc.txt.gz
+https://github.com/openscriptures/morphhb
+Licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+Based on the Westminster Leningrad Codex, which is in the public domain.
+Changes: cantillation marks removed; word division and Strong's numbers (lemma) reformatted
+into one line per verse.

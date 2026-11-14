@@ -1,6 +1,6 @@
 {
   "name": "hwp2docx",
-  "version": "0.7.4",
+  "version": "0.7.6",
   "description": "한글(HWP) ↔ 워드(DOCX), PDF → 한글 서식 그대로 변환",
   "type": "module",
   "bin": {
