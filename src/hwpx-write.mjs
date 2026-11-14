@@ -1,6 +1,7 @@
 // 워드 모델(docx-read) → 한글 HWPX 패키지
 // 단위: 워드 twip(1/20 pt) × 5 = 한글 HWPUNIT(1/100 pt). 워드 글자 크기 half-point × 50 = 한글 글자 높이.
 import { zipSync, strToU8 } from 'fflate';
+import { latexLikeToEqEdit } from './kordoc-vendor.mjs';
 import { HEADER_XML, VERSION_XML, CONTAINER_XML, MANIFEST_XML, SECTION_OPEN, HPF_OPEN } from './hwpx-skeleton.mjs';
 import { HANGUL_ADVANCE, SPACE_ADVANCE, SPACE_ADVANCE_GUESS, LINE_HEIGHT, VMETRICS } from './font-metrics.mjs';
 
@@ -185,6 +186,41 @@ export function buildHwpx(model, opts = {}) {
     binItems.push(item); binByBuf.set(data, item);
     return item;
   }
+  // ── 수식: 워드 수식 → LaTeX → 한컴 수식 스크립트 (kordoc 변환기) ──
+  // 크기는 어림값을 넣고, 한글이 문서를 열 때 스크립트로 다시 그린다.
+  function equationXml(it) {
+    let script = '';
+    try { script = latexLikeToEqEdit(it.latex); } catch { script = ''; }
+    if (!script) return '';
+    const half = it.sz || it.rpr?.sz || 20;
+    const baseUnit = Math.round(half * 50);
+    const k = baseUnit / 1000;
+    const cleaned = script.replace(/[{}\\^_]/g, '').replace(/\s+/g, ' ').trim();
+    const rows = Math.max(1, (script.match(/#/g) || []).length + 1);
+    let width = Math.min(Math.max(cleaned.length, 2) * 550 * k + 600, 42000), height = 1200 * k, baseLine = 85;
+    if (/\bmatrix\b|\bcases\b|#/.test(script)) { height = 1250 * k * rows + 300; baseLine = 55; }
+    else if (/\bover\b|\broot\b|\bsqrt\b|\bint\b|\bsum\b/.test(script)) { height = 2600 * k; baseLine = 68; }
+    const id = nextId(), inst = nextId();
+    const color = it.rpr?.color && /^[0-9A-F]{6}$/i.test(it.rpr.color) ? '#' + it.rpr.color : '#000000';
+    return `<hp:equation id="${id}" zOrder="0" numberingType="EQUATION" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" version="Equation Version 60" baseLine="${baseLine}" textColor="${color}" baseUnit="${baseUnit}" lineMode="CHAR" font="HYhwpEQ">`
+      + `<hp:sz width="${Math.round(width)}" widthRelTo="ABSOLUTE" height="${Math.round(height)}" heightRelTo="ABSOLUTE" protect="0"/>`
+      + `<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>`
+      + `<hp:outMargin left="56" right="56" top="0" bottom="0"/><hp:shapeComment>수식입니다.</hp:shapeComment>`
+      + `<hp:script>${esc(script)}</hp:script></hp:equation>`;
+  }
+  // ── 각주·미주 ──
+  const noteCount = { footnote: 0, endnote: 0 };
+  function noteXml(it, env) {
+    const kind = it.kind === 'endnote' ? 'endnote' : 'footnote';
+    const n = ++noteCount[kind];
+    const tag = kind === 'footnote' ? 'hp:footNote' : 'hp:endNote';
+    const numType = kind === 'footnote' ? 'FOOTNOTE' : 'ENDNOTE';
+    const firstR = it.paras[0]?.runs?.find(r => r.rpr)?.rpr ?? it.paras[0]?.markR ?? it.rpr ?? {};
+    const lead = `<hp:run charPrIDRef="${charPr(firstR)}"><hp:ctrl><hp:autoNum num="${n}" numType="${numType}"><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" supscript="0"/></hp:autoNum></hp:ctrl></hp:run>`;
+    const paras = it.paras.length ? it.paras : [{ k: 'p', ppr: {}, runs: [], markR: it.rpr }];
+    const body = paras.map((b, i) => paraXml(b, { lead: i === 0 ? lead : '' })).join('');
+    return `<hp:ctrl><${tag} number="${n}" suffixChar="41" instId="${nextId()}"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">${body}</hp:subList></${tag}></hp:ctrl>`;
+  }
   function picXml(im, posOpts = {}) {
     const bin = addBin(im.data, im.ext, im.mime);
     if (!bin) return '';
@@ -321,6 +357,8 @@ export function buildHwpx(model, opts = {}) {
     items.forEach((it, ri) => {
       if (it.t === 'page') { flush(); curCp = null; flushPara(); pageBreak = true; return; }
       if (it.t === 'img') { flush(); curCp = null; runs += runXml(charPr(it.rpr ?? firstR ?? {}), `${picXml(it)}<hp:t/>`); return; }
+      if (it.t === 'eq') { const x = equationXml(it); if (x) { flush(); curCp = null; runs += runXml(charPr(it.rpr ?? firstR ?? {}), `${x}<hp:t/>`); } return; }
+      if (it.t === 'note') { flush(); curCp = null; runs += runXml(charPr({ ...(it.rpr ?? firstR ?? {}), vertAlign: 'superscript' }), noteXml(it, env)); return; }
       if (it.t === 'tab') { put(charPr(it.rpr ?? firstR), '<hp:tab width="0" leader="0" type="1"/>'); return; }
       if (it.t === 'br') { put(charPr(it.rpr ?? firstR), '<hp:lineBreak/>'); return; }
       const r = it.rpr; const base = charPr(r);

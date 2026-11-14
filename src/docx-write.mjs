@@ -1,6 +1,8 @@
 // 문서 모델(HWP에서 읽은 값) → DOCX
 // 원칙: 한글 파일에 저장된 수치를 추측 없이 그대로 옮기고, 옮길 수 없는 것은 report에 남긴다.
 import { zipSync, strToU8 } from 'fflate';
+import { hwpEquationLatex } from './hwp-equation.mjs';
+import { latexToOmml } from './latex-omml.mjs';
 import { SPACE_ADVANCE, SPACE_ADVANCE_GUESS, HANGUL_ADVANCE, HWP_SPACE } from './font-metrics.mjs';
 
 const tw = (hu) => Math.round(hu / 5);            // HWPUNIT → twips(1/1440인치)
@@ -365,7 +367,22 @@ export function buildDocx(doc, opts = {}) {
 
   // ── 문단 목록 → 블록 목록 ─────────────────────────────────────────
   // 블록: {k:'p', ...} | {k:'tbl', xml} | {k:'gap', h}
-  const state = { section: null, sectionStack: [] };
+  const state = { section: null, sectionStack: [], noteKind: null, lastShapes: {} };
+  const notes = { footnote: [], endnote: [] };
+  const noAlign = (x) => x.replace(/<w:vertAlign [^>]*\/>/g, '');
+  // 각주·미주 번호 글자: 한글의 번호 모양(앞·뒤 글자)을 그대로
+  const noteMark = (kind, n) => { const sh = state.lastShapes[kind] || { prefix: '', suffix: ')' }; return `${sh.prefix || ''}${n}${sh.suffix ?? ''}`; };
+  // 한글 수식 → 워드 수식
+  function equationXml(c, cs) {
+    const sizeHu = c.size || 1000;
+    const half = Math.max(2, Math.round(sizeHu / 50));
+    const host = rPr(cs, 0).xml.match(/w:eastAsia="([^"]*)"/)?.[1] ?? '함초롬바탕';
+    const rp = `<w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math" w:eastAsia="${host}" w:cs="Cambria Math"/>${c.color && c.color !== '000000' ? `<w:color w:val="${c.color}"/>` : ''}<w:sz w:val="${half}"/><w:szCs w:val="${half}"/></w:rPr>`;
+    let latex = '';
+    try { latex = hwpEquationLatex(c.script || ''); } catch { latex = ''; }
+    if (!latex) { note('수식 일부를 글자로 옮김'); return `<w:r>${rp}<w:t xml:space="preserve">${esc(c.script || '')}</w:t></w:r>`; }
+    return latexToOmml(latex, { rPr: rp });
+  }
 
   function headText(ps) {
     if (!ps.headType) return '';
@@ -437,7 +454,7 @@ export function buildDocx(doc, opts = {}) {
         if (it.t !== 'ctrl') { if (!textDone) texts.push(it); continue; }
         const c = it.ctrl;
         switch (c.id) {
-          case 'secd': state.section = { page: c.page, defaultTab: c.defaultTab, cols: 1, colGap: 0, headers: [], footers: [], pageNum: null }; state.sectionStack.push(state.section); break;
+          case 'secd': if (c.footnoteShape) state.lastShapes.footnote = c.footnoteShape; if (c.endnoteShape) state.lastShapes.endnote = c.endnoteShape; state.section = { page: c.page, defaultTab: c.defaultTab, cols: 1, colGap: 0, headers: [], footers: [], pageNum: null }; state.sectionStack.push(state.section); break;
           case 'cold': if (state.section) { state.section.cols = c.count || 1; state.section.colGap = c.gap; } break;
           case 'pgnp': if (state.section) state.section.pageNum = c; break;
           case 'head': state.section?.headers.push(c); break;
@@ -484,11 +501,43 @@ export function buildDocx(doc, opts = {}) {
           case 'rect':
             texts.push({ t: 'raw', xml: vmlRectRunXml(c) });
             break;
-          case 'fn  ': case 'en  ': note('각주·미주는 아직 옮기지 못함'); break;
-          case 'atno': texts.push({ t: 'text', text: String(c.number || ''), cs: it.cs }); note('자동 번호(표·그림 번호)는 일반 숫자로 바꿔 넣음'); break;
+          case 'fn  ': case 'en  ': {
+            const kind = c.id === 'fn  ' ? 'footnote' : 'endnote';
+            const list = notes[kind];
+            const id = list.length + 1;
+            let num = id;
+            for (const q of c.paras || []) for (const x of q.items) if (x.t === 'ctrl' && x.ctrl.id === 'atno' && (x.ctrl.kind === 1 || x.ctrl.kind === 2) && x.ctrl.number) num = x.ctrl.number;
+            const saved = state.noteKind; state.noteKind = kind;
+            const w = env.width || (state.section?.page ? state.section.page.width - state.section.page.left - state.section.page.right : 42520);
+            const body = c.paras?.length ? blocksXml(convertParas(c.paras, { inCell: true, width: w }), true) : '<w:p/>';
+            state.noteKind = saved;
+            list.push({ id, body });
+            const rp = noAlign(rPr(it.cs, 0).xml) + '<w:vertAlign w:val="superscript"/>';
+            const tag = kind === 'footnote' ? 'footnoteReference' : 'endnoteReference';
+            // 번호는 워드가 매기게 두고(자동 번호), 한글의 앞·뒤 글자(예: ')')만 덧붙인다
+            const sh = state.lastShapes[kind] || {};
+            const tx = (t) => t ? `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>` : '';
+            texts.push({ t: 'raw', xml: `${tx(sh.prefix)}<w:r><w:rPr>${rp}</w:rPr><w:${tag} w:id="${id}"/></w:r>${tx(sh.suffix ?? ')')}` });
+            break;
+          }
+          case 'eqed':
+            texts.push({ t: 'raw', xml: equationXml(c, it.cs) });
+            inlinePicH = Math.max(inlinePicH, c.height || 0);
+            break;
+          case 'atno':
+            if (state.noteKind && (c.kind === 1 || c.kind === 2)) {
+              // 각주·미주 안의 번호: 한글처럼 '1)' 모양으로
+              const sh = state.lastShapes[state.noteKind];
+              const rp = noAlign(rPr(it.cs, 0).xml) + (sh?.superscript ? '<w:vertAlign w:val="superscript"/>' : '');
+              const tx = (t) => t ? `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>` : '';
+              texts.push({ t: 'raw', xml: `${tx(sh?.prefix)}<w:r><w:rPr>${rp}</w:rPr><w:${state.noteKind}Ref/></w:r>${tx(sh?.suffix ?? ')')}` });
+            } else { texts.push({ t: 'text', text: String(c.number || ''), cs: it.cs }); note('자동 번호(표·그림 번호)는 일반 숫자로 바꿔 넣음'); }
+            break;
+          case 'bad ': note('읽지 못한 개체 일부는 건너뜀'); break;
           default: break;      // 책갈피·계산식 등: 화면에 보이는 값은 이미 글자로 들어 있다
         }
         if (c.id !== 'tbl ') continue;
+        const tblMark = blocks.length;
 
         const jc = ALIGN[ps.align] === 'center' ? 'center' : ALIGN[ps.align] === 'right' ? 'right' : 'left';
         const seg = para.lineSegs[0];
@@ -540,6 +589,17 @@ export function buildDocx(doc, opts = {}) {
             x: c.x + c.marginLeft + (c.horzRel === 3 ? ps.left : 0), y: c.y + c.marginTop,
           };
           blocks.push({ k: 'tbl', xml: tableXml(c, env, { floating: f }), floating: true });
+        }
+        // 표 캡션: 위(2)는 표 앞에, 아래(3)·왼쪽·오른쪽은 표 뒤에 문단으로
+        if (c.caption?.paras?.length) {
+          const ti = blocks.findIndex((b, bi) => bi >= tblMark && b.k === 'tbl');
+          if (ti >= 0) {
+            const cap = convertParas(c.caption.paras, env);
+            const gap = { k: 'gap', h: c.caption.gap || 0 };
+            if (c.caption.pos === 2) blocks.splice(ti, 0, ...cap, gap);
+            else blocks.splice(ti + 1, 0, gap, ...cap);
+            if (c.caption.pos < 2) note('표 왼쪽·오른쪽 캡션은 표 아래로 옮김');
+          }
         }
       }
       if (texts.length || !emittedText) emitPara();
@@ -704,7 +764,7 @@ export function buildDocx(doc, opts = {}) {
       if (pos > 6) note('쪽 번호의 안쪽/바깥쪽 위치는 가운데로 근사');
     }
     const root = kind === 'header' ? 'hdr' : 'ftr';
-    parts[file] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:${root} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">${body || '<w:p/>'}</w:${root}>`;
+    parts[file] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:${root} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${body || '<w:p/>'}</w:${root}>`;
     rels.push({ id, type: kind, target: file });
     return id;
   }
@@ -757,19 +817,28 @@ export function buildDocx(doc, opts = {}) {
     if (sec.defaultTab) state.defaultTab = sec.defaultTab;
   });
 
-  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word"';
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
   const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   const base = doc.styles[0] ? rPr(doc.styles[0].charShape, 0) : rPr(0, 0);
   const mediaExts = new Map();
   for (const m of media) mediaExts.set(m.ext, m.mime);
   const mediaDefaults = [...mediaExts].map(([ext, mime]) => `<Default Extension="${ext}" ContentType="${mime}"/>`).join('');
+  for (const kind of ['footnote', 'endnote']) {
+    const list = notes[kind];
+    if (!list.length) continue;
+    const root = kind + 's';
+    const sepP = (t) => `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:${t}/></w:r></w:p>`;
+    parts[root + '.xml'] = `${XML}<w:${root} ${NS}><w:${kind} w:type="separator" w:id="-1">${sepP('separator')}</w:${kind}><w:${kind} w:type="continuationSeparator" w:id="0">${sepP('continuationSeparator')}</w:${kind}>${list.map(n => `<w:${kind} w:id="${n.id}">${n.body}</w:${kind}>`).join('')}</w:${root}>`;
+    rels.push({ id: `rId${relId++}`, type: root, target: root + '.xml' });
+  }
+  const notePr = (notes.footnote.length ? '<w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr>' : '') + (notes.endnote.length ? '<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>' : '');
   const files = {
     '[Content_Types].xml': `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaDefaults}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${rels.filter(r => !r.isMedia).map(r => `<Override PartName="/word/${r.target}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${r.type}+xml"/>`).join('')}</Types>`,
     '_rels/.rels': `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
     'word/_rels/document.xml.rels': `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>${rels.map(r => `<Relationship Id="${r.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`,
     'word/document.xml': `${XML}<w:document ${NS}><w:body>${body}</w:body></w:document>`,
     'word/styles.xml': `${XML}<w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr>${base.xml}<w:lang w:val="en-US" w:eastAsia="ko-KR"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="a"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="table" w:default="1" w:styleId="a1"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>`,
-    'word/settings.xml': `${XML}<w:settings ${NS}><w:zoom w:percent="100"/><w:defaultTabStop w:val="${tw((state.defaultTab ?? 8000) / 2)}"/><w:noPunctuationKerning/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:useFELayout/><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/><w:compatSetting w:name="overrideTableStyleFontSizeAndJustification" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/><w:compatSetting w:name="enableOpenTypeFeatures" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/><w:compatSetting w:name="doNotFlipMirrorIndents" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/></w:compat></w:settings>`,
+    'word/settings.xml': `${XML}<w:settings ${NS}><w:zoom w:percent="100"/><w:defaultTabStop w:val="${tw((state.defaultTab ?? 8000) / 2)}"/><w:noPunctuationKerning/><w:characterSpacingControl w:val="doNotCompress"/>${notePr}<w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:useFELayout/><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/><w:compatSetting w:name="overrideTableStyleFontSizeAndJustification" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/><w:compatSetting w:name="enableOpenTypeFeatures" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/><w:compatSetting w:name="doNotFlipMirrorIndents" w:uri="http://schemas.microsoft.com/office/word" w:val="1"/></w:compat></w:settings>`,
   };
   for (const [name, xml] of Object.entries(parts)) files['word/' + name] = xml;
   for (const m of media) files['word/' + m.target] = m.data;

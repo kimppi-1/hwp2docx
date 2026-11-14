@@ -3,13 +3,14 @@
 // 단위: HWPUNIT = 1/7200 인치 (100 = 1pt)
 import CFB from 'cfb';
 import { inflateSync } from 'fflate';
+import { aes128EcbDecrypt } from './kordoc-vendor.mjs';
 
 const TAG = {
   DOCUMENT_PROPERTIES: 16, ID_MAPPINGS: 17, BIN_DATA: 18, FACE_NAME: 19, BORDER_FILL: 20,
   CHAR_SHAPE: 21, TAB_DEF: 22, NUMBERING: 23, BULLET: 24, PARA_SHAPE: 25, STYLE: 26,
   PARA_HEADER: 66, PARA_TEXT: 67, PARA_CHAR_SHAPE: 68, PARA_LINE_SEG: 69, PARA_RANGE_TAG: 70,
   CTRL_HEADER: 71, LIST_HEADER: 72, PAGE_DEF: 73, FOOTNOTE_SHAPE: 74, PAGE_BORDER_FILL: 75,
-  SHAPE_COMPONENT: 76, TABLE: 77,
+  SHAPE_COMPONENT: 76, TABLE: 77, EQEDIT: 88,
 };
 
 class Reader {
@@ -245,6 +246,14 @@ function parseCtrl(node, ctx) {
         };
         ctrl.page.landscape = !!(p.u32() & 1);
       }
+      // 각주·미주 모양 (번호 앞뒤 글자, 위 첨자 여부)
+      const fs = kids.filter(k => k.tag === TAG.FOOTNOTE_SHAPE);
+      ['footnoteShape', 'endnoteShape'].forEach((key, i) => {
+        const d = fs[i]; if (!d || d.data.length < 10) return;
+        const f = new Reader(d.data); const a = f.u32();
+        const ch = (v) => (v ? String.fromCharCode(v) : '');
+        ctrl[key] = { format: a & 0xff, superscript: !!(a & (1 << 12)), user: ch(f.u16()), prefix: ch(f.u16()), suffix: ch(f.u16()), start: f.left >= 2 ? f.u16() : 1 };
+      });
       break;
     }
     case 'cold': {
@@ -255,9 +264,20 @@ function parseCtrl(node, ctx) {
     }
     case 'tbl ': {
       Object.assign(ctrl, parseObjCommon(r));
-      const cells = []; let cur = null;
+      const cells = []; let cur = null, seenTable = false;
       for (const k of kids) {
+        if (k.tag === TAG.LIST_HEADER && !seenTable) {
+          // 표 레코드보다 앞에 오는 목록 머리 = 캡션
+          const c = new Reader(k.data);
+          c.skip(8);
+          const a = c.left >= 4 ? c.u32() : 3;
+          const width = c.left >= 4 ? c.u32() : 0, gap = c.left >= 2 ? c.u16() : 0;
+          ctrl.caption = { pos: a & 3, width, gap, paras: parseParaList(k.children, ctx) };
+          cur = ctrl.caption;
+          continue;
+        }
         if (k.tag === TAG.TABLE) {
+          seenTable = true;
           const t = new Reader(k.data);
           const a = t.u32();
           ctrl.split = a & 3; ctrl.repeatHeader = !!(a & 4);
@@ -331,6 +351,19 @@ function parseCtrl(node, ctx) {
       }
       break;
     }
+    case 'eqed': {
+      Object.assign(ctrl, parseObjCommon(r));
+      const eq = kids.find(k => k.tag === TAG.EQEDIT);
+      if (eq) {
+        const e = new Reader(eq.data);
+        e.u32();
+        ctrl.script = e.str();
+        ctrl.size = e.left >= 4 ? e.u32() : 1000;
+        ctrl.color = e.left >= 4 ? color(e.u32()) : null;
+        ctrl.baseline = e.left >= 2 ? e.i16() : 0;
+      }
+      break;
+    }
     case 'atno': case 'nwno': {
       const a = r.left >= 4 ? r.u32() : 0;
       ctrl.kind = a & 0xf; ctrl.number = r.left >= 2 ? r.u16() : 0;
@@ -360,7 +393,11 @@ function parsePara(node, ctx) {
         const s = { pos: r.u32(), y: r.i32(), height: r.i32(), textHeight: r.i32(), baseline: r.i32(), gap: r.i32(), x: r.i32(), width: r.i32() };
         r.u32(); para.lineSegs.push(s);
       }
-    } else if (k.tag === TAG.CTRL_HEADER) ctrls.push(parseCtrl(k, ctx));
+    } else if (k.tag === TAG.CTRL_HEADER) {
+      // 개체 하나를 읽다 실패해도 문서 전체 변환은 이어 간다
+      try { ctrls.push(parseCtrl(k, ctx)); }
+      catch (err) { const id = k.data.length >= 4 ? ctrlIdStr(new DataView(k.data.buffer, k.data.byteOffset).getUint32(0, true)) : '????'; ctrls.push({ id: 'bad ', orig: id, error: String(err?.message || err) }); }
+    }
   }
   const shapeAt = (pos) => { let id = shapes[0]?.[1] ?? 0; for (const [p, s] of shapes) { if (p <= pos) id = s; else break; } return id; };
   para.endCharShape = shapeAt(Math.max(0, nchars - 1));
@@ -401,6 +438,30 @@ function parsePara(node, ctx) {
   return para;
 }
 
+// 배포용 문서: ViewText/Section 스트림의 첫 레코드(256바이트)에서 AES 키를 꺼내 본문을 푼다.
+// 방식은 kordoc(MIT)의 hwp5/crypto.ts를 따랐다.
+function decryptViewText(raw, compressed) {
+  const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  const h = dv.getUint32(0, true);
+  let size = h >>> 20, hs = 4;
+  if (size === 0xfff) { size = dv.getUint32(4, true); hs = 8; }
+  if ((h & 0x3ff) !== 28 || size < 256) throw new Error('배포용 문서의 본문을 풀 수 없습니다.');
+  const payload = raw.slice(hs, hs + 256);
+  let seed = dv.getUint32(hs, true) >>> 0, n = 0, key = 0;
+  const rand = () => { seed = (Math.imul(seed, 214013) + 2531011) >>> 0; return (seed >>> 16) & 0x7fff; };
+  for (let i = 0; i < 256; i++) {
+    if (n === 0) { key = rand() & 0xff; n = (rand() & 0x0f) + 1; }
+    if (i >= 4) payload[i] ^= key;
+    n--;
+  }
+  const off = 4 + (payload[0] & 0x0f);
+  const aesKey = payload.slice(off, off + 16);
+  const enc = raw.subarray(hs + size);
+  const dec = aes128EcbDecrypt(enc.subarray(0, enc.length - (enc.length % 16)), aesKey);
+  if (!compressed) return dec;
+  try { return inflateSync(dec); } catch { return dec; }
+}
+
 export function parseHwp(input) {
   const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
   const cfb = CFB.read(u8, { type: 'array' });
@@ -409,12 +470,13 @@ export function parseHwp(input) {
   if (!fh || String.fromCharCode(...fh.subarray(0, 17)) !== 'HWP Document File') throw new Error('HWP 5.0 문서가 아닙니다.');
   const flags = new DataView(fh.buffer, fh.byteOffset).getUint32(36, true);
   if (flags & 2) throw new Error('암호가 걸린 문서는 변환할 수 없습니다.');
-  if (flags & 4) throw new Error('배포용 문서는 변환할 수 없습니다.');
+  const distribution = !!(flags & 4);
   const compressed = !!(flags & 1);
   const version = [fh[35], fh[34], fh[33], fh[32]];
   const stream = (name) => { const d = get(name); if (!d) return null; return compressed ? inflateSync(d) : d; };
   const doc = parseDocInfo(stream('/DocInfo') ?? stream('DocInfo'), version);
   doc.version = version.join('.');
+  doc.distribution = distribution;
 
   const binMap = new Map();
   for (const b of doc.binData || []) {
@@ -434,7 +496,9 @@ export function parseHwp(input) {
 
   doc.sections = [];
   for (let i = 0; ; i++) {
-    const s = stream(`/BodyText/Section${i}`) ?? stream(`BodyText/Section${i}`);
+    const s = distribution
+      ? (() => { const v = get(`/ViewText/Section${i}`) ?? get(`ViewText/Section${i}`); return v ? decryptViewText(v, compressed) : null; })()
+      : stream(`/BodyText/Section${i}`) ?? stream(`BodyText/Section${i}`);
     if (!s) break;
     doc.sections.push({ paras: parseParaList(recordTree(s), ctx) });
   }

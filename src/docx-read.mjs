@@ -1,5 +1,6 @@
 // 워드(DOCX) 읽기 — 스타일 상속, 번호 매기기, 표를 풀어 '실제로 적용되는 값'만 남긴 모델로 만든다.
 // 단위: 길이는 twip(1/20 pt), 글자 크기는 half-point(워드 원래 단위) 그대로 둔다. 변환은 hwpx-write 에서 한다.
+import { ommlElementToLatex } from './kordoc-vendor.mjs';
 import { unzipSync, strFromU8 } from 'fflate';
 
 // ── 아주 작은 XML 파서 (요소 이름·속성은 접두어를 뗀 이름으로도 찾을 수 있게) ───────────
@@ -40,6 +41,26 @@ const attr = (el, name) => el?.a?.[name];
 const num = (v, d) => { if (v == null || v === '') return d; const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
 const onOff = (el) => { if (!el) return undefined; const v = el.a.val; return !(v === '0' || v === 'false' || v === 'off' || v === 'none'); };
 const textOf = (el) => el.c.map(k => typeof k === 'string' ? k : '').join('');
+// 이 파일의 가벼운 XML 노드를 kordoc 수식 변환기가 쓰는 DOM 모양으로 감싼다
+function domify(n) {
+  if (typeof n === 'string') return { nodeType: 3, textContent: n, childNodes: [] };
+  const kidsD = n.c.map(domify);
+  return {
+    nodeType: 1, tagName: n.n, localName: n.n, childNodes: kidsD,
+    getAttribute: (k) => n.a[k] ?? n.a[k.replace(/^[^:]+:/, '')] ?? null,
+    get textContent() { return kidsD.map(k => k.textContent).join(''); },
+  };
+}
+function findDeepNode(node, name) {
+  if (typeof node !== 'object') return null;
+  if (node.n === name) return node;
+  for (const ch of node.c || []) { const r = findDeepNode(ch, name); if (r) return r; }
+  return null;
+}
+// 워드 수식(OMML) → LaTeX
+function ommlToLatex(el) {
+  try { return ommlElementToLatex(domify(el)); } catch { return ''; }
+}
 
 // ── 속성 읽기 ────────────────────────────────────────────────────────────
 function readBorder(el) {
@@ -295,6 +316,18 @@ export function readDocx(bytes) {
   const baseFonts = { ascii: themeFont(theme, 'minorHAnsi') || 'Times New Roman', hAnsi: themeFont(theme, 'minorHAnsi') || 'Times New Roman', eastAsia: themeFont(theme, 'minorEastAsia') || '맑은 고딕' };
   const baseR = mergeRPr({ fonts: baseFonts, sz: 20, color: '000000' }, defaults.rpr);
 
+  // 각주·미주 본문
+  const noteParts = {};
+  const noteEl = (kind, id) => {
+    if (!noteParts[kind]) {
+      noteParts[kind] = new Map();
+      const xml = get(`word/${kind}s.xml`);
+      if (xml) for (const f of kids(kid(parseXml(xml), kind + 's'), kind)) noteParts[kind].set(f.a.id, f);
+    }
+    return noteParts[kind].get(String(id));
+  };
+  let noteDepth = 0;
+
   const counters = {};   // numId → [lvl counts]
   const report = { notes: [] };
   const note = (m) => { notes.set(m, (notes.get(m) || 0) + 1); };
@@ -384,7 +417,21 @@ export function readDocx(bytes) {
             break;
           }
           case 'object': note('그림·도형은 아직 옮기지 못함'); break;
-          case 'footnoteReference': case 'endnoteReference': note('각주·미주는 아직 옮기지 못함'); break;
+          case 'footnoteReference': case 'endnoteReference': {
+            const kind = k.n === 'footnoteReference' ? 'footnote' : 'endnote';
+            const el = noteDepth === 0 ? noteEl(kind, k.a.id) : null;
+            if (!el) break;
+            noteDepth++;
+            const paras = [];
+            for (const q of el.c) {
+              if (typeof q !== 'object') continue;
+              if (q.n === 'p') paras.push(readPara(q, {}));
+              else if (q.n === 'tbl') note('각주 안의 표는 글만 옮김');
+            }
+            noteDepth--;
+            runs.push({ t: 'note', kind, paras, rpr, custom: k.a.customMarkFollows === '1' || k.a.customMarkFollows === 'true' });
+            break;
+          }
           case 'lastRenderedPageBreak': break;
         }
       }
@@ -393,11 +440,30 @@ export function readDocx(bytes) {
       for (const k of el.c) {
         if (typeof k !== 'object') continue;
         if (k.n === 'r') walkRun(k);
+        else if (k.n === 'oMath' || k.n === 'oMathPara') {
+          const list = k.n === 'oMath' ? [k] : kids(k, 'oMath');
+          for (const m of list) {
+            const latex = ommlToLatex(m);
+            const szEl = findDeepNode(m, 'sz');
+            const sz = szEl ? num(szEl.a.val, 0) : 0;
+            if (latex) runs.push({ t: 'eq', latex, display: k.n === 'oMathPara', sz, rpr: paraR });
+            else note('읽지 못한 워드 수식은 건너뜀');
+          }
+        }
         else if (k.n === 'hyperlink' || k.n === 'smartTag' || k.n === 'ins' || k.n === 'customXml' || k.n === 'sdt' || k.n === 'sdtContent' || k.n === 'fldSimple') walk(k);
         else if (k.n === 'del' || k.n === 'moveFrom') { /* 지운 글자 */ }
       }
     };
     walk(p);
+    // 각주 번호 뒤에 글자로 붙여 둔 ')' 는 한글이 번호 모양으로 스스로 붙이므로 뺀다 (한글→워드→한글 왕복 대비)
+    for (let i = 0; i < runs.length - 1; i++) {
+      const a = runs[i], b = runs[i + 1];
+      if (a.t === 'note' && b.t === 'text' && b.rpr?.vertAlign === 'superscript' && /^[)\]]/.test(b.text)) { b.text = b.text.slice(1); if (!b.text) runs.splice(i + 1, 1); }
+    }
+    if (noteDepth > 0 && runs[0]?.t === 'text' && runs.length) {
+      const m = /^\s*[)\]]/.exec(runs[0].text);
+      if (m) { runs[0].text = runs[0].text.slice(m[0].length); if (!runs[0].text) runs.shift(); }
+    }
     const markR = mergeRPr(paraR, readRPr(ppr.markRPr, theme));
     const firstR = runs.find(r => r.rpr)?.rpr ?? markR;
     const nb = numberText(ppr, firstR);
