@@ -1,0 +1,15 @@
+{
+ "sj.knlm": [
+  "sj.knlm.gz.0",
+  "sj.knlm.gz.1"
+ ],
+ "sj.morph": [
+  "sj.morph.gz"
+ ],
+ "extract.mdl": [
+  "extract.mdl.gz"
+ ],
+ "combiningRule.txt": [
+  "combiningRule.txt"
+ ]
+}

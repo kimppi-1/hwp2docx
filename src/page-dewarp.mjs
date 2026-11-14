@@ -229,11 +229,11 @@ function powell(f, x0, { maxIter = 40, tol = 1e-7, timeLimit = 4000 } = {}) {
 
 // ── 본체: 휜 정도를 재서 '펴기 지도'를 만든다 ──
 // g: 쪽 하나의 회색 그림(0~255, 흰 바탕), W×H. 실패하면 null.
-export function sheetDewarpMap(g, W, H, opts = {}) {
-  const SH = opts.small || 900;
+// 글줄 찾기: 작은 그림에서 글자 덩어리를 찾아 같은 줄끼리 잇는다 → { sm, spans, th }
+function textSpans(g, W, H, SH = 900) {
   const sm = boxShrink(g, W, H, Math.min(SH, H));
   const { w, h } = sm;
-  // 1) 글자 덩어리: 국소 문턱 → 가로로 이어 붙이기 → 세로로 살짝 깎기
+  // 1) 글자 덩어리: 국소 문턱(조명이 고르지 않아도 됨) → 가로로 이어 붙이기 → 세로로 살짝 깎기
   let m = adaptiveInv(sm.g, w, h, 55, 18);
   // 테두리(종이 가장자리·손가락) 빼기
   const mx = Math.round(w * 0.03), my = Math.round(h * 0.02);
@@ -246,7 +246,7 @@ export function sheetDewarpMap(g, W, H, opts = {}) {
   m = erodeV(dilateH(m, w, h, dk), w, h, th >= 8 ? 3 : 1);
   // 2) 덩어리 거르기: 가로로 길고(글줄 조각), 너무 두껍지 않은 것만
   const minW = Math.max(12, th * 1.5), maxThick = Math.max(8, th * 1.8);
-  let C = components(m, w, h).map(px => blobInfo(px, w)).filter(c => c.bw >= minW && c.bw >= 1.5 * c.bh && c.thick <= maxThick);
+  const C = components(m, w, h).map(px => blobInfo(px, w)).filter(c => c.bw >= minW && c.bw >= 1.5 * c.bh && c.thick <= maxThick);
   if (C.length < 8) return null;
   // 3) 이웃 덩어리 잇기 (같은 글줄)
   const maxLen = th * 8, edges = [];
@@ -269,8 +269,16 @@ export function sheetDewarpMap(g, W, H, opts = {}) {
     while (c.pred) c = c.pred;
     const span = []; let wsum = 0;
     while (c) { left.delete(c); span.push(c); wsum += c.xr[1] - c.xr[0]; c = c.succ; }
-    if (wsum > Math.max(30, w * 0.12)) spans.push(span);
+    spans.push({ span, wsum });
   }
+  return { sm, w, h, th, spans, mx, my };
+}
+
+export function sheetDewarpMap(g, W, H, opts = {}) {
+  const T = textSpans(g, W, H, opts.small || 900);
+  if (!T) return null;
+  const { w, h, mx, my } = T;
+  const spans = T.spans.filter(s => s.wsum > Math.max(30, w * 0.12)).map(s => s.span);
   if (spans.length < 4) return null;
   // 4) 표본점: 덩어리 열마다 가운데 높이, 일정 간격으로 (정규화 좌표)
   const scl = 2 / Math.max(w, h), ox = w / 2, oy = h / 2;
@@ -383,3 +391,76 @@ export function invertPoint(M, x, y) {
   if (Math.abs(det) > 1e-9) { u = (dx * by - dy * bx) / det; v = (ax * dy - ay * dx) / det; }
   return [Math.max(0, Math.min(outW, (i + Math.max(-1, Math.min(1, u))) * dec)), Math.max(0, Math.min(outH, (j + Math.max(-1, Math.min(1, v))) * dec))];
 }
+
+// ── 판면 좌우 가장자리 바로 세우기(사다리꼴 고치기) ──
+// 비스듬히 찍으면 글줄 시작(왼쪽 가장자리)·끝(양쪽 정렬된 오른쪽 가장자리)이 세로로 곧지 않고 비스듬하다.
+// 글줄들의 왼쪽 끝·오른쪽 끝에 직선을 맞추고(들여 쓴 줄·짧은 끝 줄은 빼고), 두 직선이 세로가 되도록 줄마다 가로로 늘이고 줄인다.
+export function marginMap(g, W, H) {
+  const T = textSpans(g, W, H, 900);
+  if (!T) return null;
+  const k = H / T.h;   // 작은 그림 → 원 그림
+  const L = T.spans.filter(s => s.wsum > T.th * 3).map(({ span }) => {
+    const xl = Math.min(...span.map(c => c.p0[0])), xr = Math.max(...span.map(c => c.p1[0]));
+    const yc = span.reduce((a, c) => a + c.center[1], 0) / span.length;
+    return { y: yc * k, xl: xl * k, xr: xr * k };
+  });
+  if (L.length < 6) return null;
+  const em = T.th * k * 1.3;
+  // 두 점씩 골라 직선을 긋고(RANSAC), 가까이 놓인 줄이 가장 많은 직선을 고른다.
+  //  왼쪽 가장자리 밖(더 왼쪽)에 놓인 줄은 감점 — 본문 시작보다 왼쪽엔 글줄이 없어야 하므로
+  const fit = (pts, side, minSpan = 0.35) => {
+    let best = null;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const p = pts[i], q = pts[j];
+      if (Math.abs(p.y - q.y) < H * Math.min(0.2, minSpan * 0.6)) continue;
+      const b = (q.v - p.v) / (q.y - p.y), a = p.v - b * p.y;
+      if (Math.abs(b) > 0.35) continue;
+      let inl = 0, bad = 0;
+      for (const r of pts) { const d = (r.v - (a + b * r.y)) * side; if (Math.abs(d) < em * 0.5) inl++; else if (d < -em * 1.2) bad++; }
+      const sc = inl - 0.7 * bad;
+      if (!best || sc > best.sc) best = { sc, a, b };
+    }
+    if (!best) return null;
+    let { a, b } = best;
+    const P = pts.filter(r => Math.abs(r.v - (a + b * r.y)) < em * 0.5);
+    if (P.length < Math.max(4, pts.length * 0.25)) return null;
+    const n = P.length, my = P.reduce((s, p) => s + p.y, 0) / n, mv = P.reduce((s, p) => s + p.v, 0) / n;
+    let syy = 0, syv = 0; for (const p of P) { syy += (p.y - my) ** 2; syv += (p.y - my) * (p.v - mv); }
+    if (syy) { b = syv / syy; a = mv - b * my; }
+    const ys = P.map(p => p.y);
+    if (Math.max(...ys) - Math.min(...ys) < H * minSpan) return null;
+    return { a, b, n };
+  };
+  // 먼저 대강 오른쪽 끝 직선을 구해 '꽉 찬 줄'을 고르고, 꽉 찬 줄 다음 줄(문단이 이어지는 줄)은 들여쓰기 없이
+  // 왼쪽 끝에서 시작하므로 그 줄들로 왼쪽 직선을 맞춘다 (대화체처럼 들여 쓴 짧은 줄에 휘둘리지 않게)
+  L.sort((p, q) => p.y - q.y);
+  let Rf = fit(L.map(l => ({ y: l.y, v: l.xr })), -1);
+  let Lf = null;
+  if (Rf) {
+    const full = L.map(l => l.xr > Rf.a + Rf.b * l.y - em * 0.8);
+    const cont = L.filter((l, i) => i > 0 && full[i - 1] && L[i].y - L[i - 1].y < em * 3);
+    if (cont.length >= 4) Lf = fit(cont.map(l => ({ y: l.y, v: l.xl })), 1, 0.2);
+    const fulls = L.filter((l, i) => full[i]);
+    if (fulls.length >= 4) Rf = fit(fulls.map(l => ({ y: l.y, v: l.xr })), -1) || Rf;
+  }
+  if (!Lf) Lf = fit(L.map(l => ({ y: l.y, v: l.xl })), 1);
+  if (!Lf || !Rf) return null;
+  if (Math.abs(Lf.b) < 0.012 && Math.abs(Rf.b) < 0.012) return null;   // 이미 곧다
+  const ym = H / 2, L0 = Lf.a + Lf.b * ym, R0 = Rf.a + Rf.b * ym;
+  if (!(R0 - L0 > W * 0.3)) return null;
+  return { Lf, Rf, L0, R0, W, H };
+}
+const marginSrcX = (M, x, y) => { const l = M.Lf.a + M.Lf.b * y, r = M.Rf.a + M.Rf.b * y; return l + (x - M.L0) * (r - l) / (M.R0 - M.L0); };
+export function applyMarginMap(g, W, H, M, fill = 255) {
+  const o = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const l = M.Lf.a + M.Lf.b * y, r = M.Rf.a + M.Rf.b * y, sc = (r - l) / (M.R0 - M.L0);
+    for (let x = 0; x < W; x++) {
+      const sx = l + (x - M.L0) * sc, X = Math.floor(sx), f = sx - X;
+      o[y * W + x] = X < 0 || X >= W - 1 ? fill : g[y * W + X] * (1 - f) + g[y * W + X + 1] * f;
+    }
+  }
+  return o;
+}
+// 원래 x → 고친 x
+export function marginInvX(M, x, y) { const l = M.Lf.a + M.Lf.b * y, r = M.Rf.a + M.Rf.b * y; return M.L0 + (x - l) * (M.R0 - M.L0) / (r - l); }

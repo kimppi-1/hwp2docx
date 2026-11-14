@@ -114,8 +114,42 @@ export async function ocrBrowser(png, opts = {}) {
   return A.map(words => ({ text: words.map(x => x.text).join(' '), words, x0: Math.min(...words.map(x => x.x0)), y0: Math.min(...words.map(x => x.y0)), x1: Math.max(...words.map(x => x.x1)), y1: Math.max(...words.map(x => x.y1)) }));
 }
 
+// 맞춤법·띄어쓰기: Kiwi 형태소 분석기(LGPL-3.0)는 jsDelivr에서, 언어 모형(약 28MB, 처음 한 번)은 이 사이트 vendor/kiwi에서 받는다
+const CDN_KIWI = 'https://cdn.jsdelivr.net/npm/kiwi-nlp@0.21.0/dist/';
+let kiwiP = null;
+async function gunzipBytes(buf) {
+  const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(ds).arrayBuffer());
+}
+async function fetchBytes(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return new Uint8Array(await r.arrayBuffer()); }
+export function loadKiwiBrowser() {
+  if (kiwiP) return kiwiP;
+  kiwiP = (async () => {
+    const { loadKiwiScorer } = await import('./ko-fix.mjs');
+    const base = new URL('vendor/kiwi/', location.href).href;
+    const man = await (await fetch(base + 'manifest.json')).json();   // { "sj.knlm": ["sj.knlm.gz.0", "sj.knlm.gz.1"], ... }
+    return loadKiwiScorer({
+      importKiwi: () => import(/* webpackIgnore: true */ CDN_KIWI + 'index.js'),
+      wasmUrl: CDN_KIWI + 'kiwi-wasm.wasm',
+      fetchModel: async (f) => {
+        const partsList = man[f] || [f];
+        const bufs = await Promise.all(partsList.map(x => fetchBytes(base + x)));
+        const all = new Uint8Array(bufs.reduce((a, b) => a + b.length, 0)); let o = 0; for (const b of bufs) { all.set(b, o); o += b.length; }
+        return /\.gz(\.\d+)?$/.test(partsList[0]) ? gunzipBytes(all) : all;
+      },
+    });
+  })();
+  kiwiP.catch(() => { kiwiP = null; });
+  return kiwiP;
+}
+
 // files: [{ name, bytes }] — 쪽 순서대로(파일 이름 순으로 정렬해 넘기면 됨)
 export async function photosToHwpx(files, opts = {}) {
+  if (opts.spell && !opts.koScore) {
+    opts.onProgress?.({ step: 'spellLoad' });
+    try { opts = { ...opts, koScore: await loadKiwiBrowser() }; } catch (e) { console.warn('spell model', e); opts = { ...opts, spellFailed: String(e?.message || e) }; }
+  }
   const m = await readPhotos(files, { decode: decodeImageBrowser, ocr: ocrBrowser, ...opts });
+  if (opts.spellFailed) m.report.spellFailed = opts.spellFailed;
   return { hwpx: bookModelToHwpx(m), report: m.report, paragraphs: m.paras.length };
 }

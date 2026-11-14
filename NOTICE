@@ -30,3 +30,8 @@ page dewarping method of:
   page-dewarp, Copyright (c) Louis Maddox — https://github.com/lmmx/page-dewarp (MIT License)
   page-dewarp-js, Copyright (c) 2025 Eryk Napierała — https://github.com/erykpiast/page-dewarp-js (MIT License)
     (the Powell / Brent minimiser follows this JavaScript port)
+
+Kiwi 한국어 형태소 분석기 (맞춤법·띄어쓰기 바로잡기)
+  kiwi-nlp 0.21.0 (WebAssembly) — 사용할 때 jsDelivr에서 받음, LGPL-3.0
+  kiwipiepy_model 0.21.0 언어 모형 — vendor/kiwi (원본 그대로 gzip 압축·분할), LGPL-3.0
+  Copyright (c) bab2min (Minchul Lee) — https://github.com/bab2min/Kiwi
