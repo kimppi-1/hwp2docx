@@ -154,10 +154,10 @@
         <span class="from" data-i18n="docxFile">워드 .docx</span><span class="arrow">→</span><span class="to" data-i18n="hwpxFile">한글 .hwpx</span>
         <span class="from">PDF .pdf</span><span class="arrow">→</span><span class="to" data-i18n="hwpxFile">한글 .hwpx</span>
         <span class="from" data-i18n="hwpxIn">한글 .hwpx</span><span class="arrow">→</span><span class="to" data-i18n="docxFile">워드 .docx</span>
-        <span class="from" data-i18n="photoFile">책·문서 사진 .jpg .png</span><span class="arrow">→</span><span class="to" data-i18n="hwpxFile">한글 .hwpx</span>
+        <span class="from" data-i18n="photoFile">책·문서 사진 (JPG·PNG·HEIC·TIFF 등)</span><span class="arrow">→</span><span class="to" data-i18n="hwpxFile">한글 .hwpx</span>
       </div>
       <button type="button" class="pick" id="pick" data-i18n="pick">파일 고르기</button>
-      <input type="file" id="file" accept=".hwp,.hwpx,.docx,.pdf,.jpg,.jpeg,.png,.webp,.heic,image/*" multiple hidden>
+      <input type="file" id="file" accept=".hwp,.hwpx,.docx,.pdf,.jpg,.jpeg,.jfif,.png,.webp,.heic,.heif,.avif,.gif,.bmp,.tif,.tiff,image/*" multiple hidden>
       <span class="private" data-i18n="private">여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.</span>
     </div>
   </section>
@@ -231,7 +231,7 @@
   </footer>
 </div>
 
-<script src="hwp2docx.bundle.js"></script>
+<script src="hwp2docx.bundle.js?v=0.7.3"></script>
 <script>
 // 화면 글 — 한국어(ko)·영어(en)·중국어(zh)·일본어(ja)
 window.I18N = {
@@ -243,7 +243,7 @@ window.I18N = {
     lead: '글꼴, 자간, 줄 간격, 여백, 표 모양까지 그대로 옮깁니다. 바꾼 뒤에 글자가 다른 줄로 밀리지 않도록, 두 프로그램이 실제로 글자를 놓는 자리를 재서 맞췄습니다.',
     dropAria: '파일 놓는 곳', dropH2: '바꿀 파일을 여기에 놓으세요',
     hwpFile: '한글 .hwp', docxFile: '워드 .docx', hwpxFile: '한글 .hwpx',
-    hwpxIn: '한글 .hwpx', photoFile: '책·문서 사진 .jpg .png', set3: '워드 → 한글 설정', wantHwp: '.hwpx와 함께 .hwp 파일도 받기', wantHwpS: '옛 한글 버전용. 처음 한 번 문서 엔진(약 27MB)을 받습니다.', getHwp5: '.hwp 받기', set4: '책·사진 → 한글 설정', bookHint: '책을 휴대폰으로 찍은 사진(여러 장이면 한꺼번에, 파일 이름 순서가 쪽 순서)을 넣으면 판형·여백·글자 크기·줄 간격·자간·줄당 글자 수를 재서 같은 모양의 한글 파일로 만듭니다. 종이 네 모서리가 다 보이게, 위에서 반듯하게 찍을수록 정확합니다.', bookSize: '책 판형', bsAuto: '자동(사진 비율로 추정)', bookLines: '줄 바뀌는 자리를 원본과 똑같이 고정', bookLinesS: '줄당 글자 수가 원본과 완전히 같아집니다. 대신 글을 고치면 줄이 다시 맞춰지지 않습니다.', bookPages: '사진 한 장 = 한 쪽으로 쪽 나눔 맞추기', pdfBook: '글자가 없는(스캔) PDF도 책 모양 그대로 만들기', rPhotoHwp: '사진 → 한글', photos: '사진 {n}장', reading: '글자 읽는 중… {n}쪽', engine: '문서 엔진 받는 중(처음 한 번)…', measured: '잰 값: {size} · 여백 위 {t} 아래 {b} 왼쪽 {l} 오른쪽 {r}mm · 글자 {pt}pt · 줄 간격 {lp}% · 자간 {sp}% · 줄당 {cpl}자 · 쪽당 {lpp}줄', droppedHead: '머리글·쪽 번호는 본문에서 뺐습니다: {list}', notPage: '종이 가장자리를 찾지 못해 사진 전체를 한 쪽으로 보았습니다. 네 모서리가 보이게 찍으면 여백이 정확해집니다.', spreadNote: '펼친 두 쪽 사진을 왼쪽·오른쪽 쪽으로 나눴습니다.', errImage: '사진을 열지 못했습니다(아이폰 HEIC라면 JPG로 바꿔 넣어 주세요): {why}', errHwpx2: '.hwpx 파일을 바꾸지 못했습니다: {why}',
+    hwpxIn: '한글 .hwpx', photoFile: '책·문서 사진 (JPG·PNG·HEIC·TIFF 등)', set3: '워드 → 한글 설정', wantHwp: '.hwpx와 함께 .hwp 파일도 받기', wantHwpS: '옛 한글 버전용. 처음 한 번 문서 엔진(약 27MB)을 받습니다.', getHwp5: '.hwp 받기', set4: '책·사진 → 한글 설정', bookHint: '책을 휴대폰으로 찍은 사진(여러 장이면 한꺼번에, 파일 이름 순서가 쪽 순서)을 넣으면 판형·여백·글자 크기·줄 간격·자간·줄당 글자 수를 재서 같은 모양의 한글 파일로 만듭니다. 종이 네 모서리가 다 보이게, 위에서 반듯하게 찍을수록 정확합니다.', bookSize: '책 판형', bsAuto: '자동(사진 비율로 추정)', bookLines: '줄 바뀌는 자리를 원본과 똑같이 고정', bookLinesS: '줄당 글자 수가 원본과 완전히 같아집니다. 대신 글을 고치면 줄이 다시 맞춰지지 않습니다.', bookPages: '사진 한 장 = 한 쪽으로 쪽 나눔 맞추기', pdfBook: '글자가 없는(스캔) PDF도 책 모양 그대로 만들기', rPhotoHwp: '사진 → 한글', photos: '사진 {n}장', reading: '글자 읽는 중… {n}쪽', engine: '문서 엔진 받는 중(처음 한 번)…', measured: '잰 값: {size} · 여백 위 {t} 아래 {b} 왼쪽 {l} 오른쪽 {r}mm · 글자 {pt}pt · 줄 간격 {lp}% · 자간 {sp}% · 줄당 {cpl}자 · 쪽당 {lpp}줄', droppedHead: '머리글·쪽 번호는 본문에서 뺐습니다: {list}', notPage: '종이 가장자리를 찾지 못해 사진 전체를 한 쪽으로 보았습니다. 네 모서리가 보이게 찍으면 여백이 정확해집니다.', spreadNote: '펼친 두 쪽 사진을 왼쪽·오른쪽 쪽으로 나눴습니다.', errImage: '사진을 열지 못했습니다. 페이지를 새로 고침(Ctrl+F5)한 뒤 다시 넣어 보세요. ({why})', errHwpx2: '.hwpx 파일을 바꾸지 못했습니다: {why}',
     pick: '파일 고르기',
     private: '여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.',
     set1: '한글 → 워드 설정',
@@ -262,13 +262,13 @@ window.I18N = {
     g2: '아직 옮기지 못하는 것',
     g2a: '사진 속 글자는 문자 인식(OCR)으로 읽어 일부 틀릴 수 있습니다. 글꼴은 알아내지 못해 비슷한 바탕체로 씁니다.', g2b: '워드의 머리말과 꼬리말',
     g2c: '한글 3.0 이전 파일(.hwp 3.x)',
-    g2d: '암호가 걸린 파일, 예전 워드 형식(.doc)', g2e: '아이폰 HEIC 사진은 JPG로 바꿔 넣어 주세요',
+    g2d: '암호가 걸린 파일, 예전 워드 형식(.doc)', g2e: '카메라 RAW 파일(.cr2·.nef 등)과 PSD는 JPG로 바꿔 넣어 주세요',
     license: '누구나 자유롭게 쓰고 고칠 수 있습니다 (MIT 라이선스)',
     srcLink: '소스와 업데이트 내역', issueLink: '잘 안 바뀌는 문서 알려 주기',
     converting: '바꾸는 중', failed: '바꾸지 못했습니다',
     errHwpx: '.hwpx 파일은 아직 워드로 바꾸지 못합니다. 한글에서 [다른 이름으로 저장] → 한글 문서(*.hwp)로 저장한 뒤 다시 넣어 주세요.',
     errDoc: '예전 워드 형식(.doc)은 바꾸지 못합니다. 워드에서 .docx로 저장한 뒤 다시 넣어 주세요.',
-    errType: '한글 문서(.hwp·.hwpx), 워드 문서(.docx), PDF, 사진(.jpg·.png)만 바꿀 수 있습니다.',
+    errType: '한글 문서(.hwp·.hwpx), 워드 문서(.docx), PDF, 사진(JPG·PNG·HEIC·TIFF·WebP·BMP·GIF·AVIF)만 바꿀 수 있습니다.',
     errNoText: '글자를 읽을 수 없는 PDF입니다. 스캔했거나 그림으로 만든 PDF는 바꾸지 못합니다.',
     errPdfPw: '암호가 걸린 PDF입니다. 암호를 푼 PDF로 다시 저장한 뒤 넣어 주세요.',
     errPdf: '이 PDF는 읽지 못했습니다. 손상된 파일일 수 있습니다. ({why})',
@@ -290,7 +290,7 @@ window.I18N = {
     lead: 'Fonts, letter spacing, line spacing, margins and table layout carry over as they are. We measured where each program actually places every character, so text does not slip onto another line after conversion. Hangul is the Korean word processor by Hancom (.hwp / .hwpx).',
     dropAria: 'Drop files here', dropH2: 'Drop the files to convert here',
     hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
-    hwpxIn: 'Hangul .hwpx', photoFile: 'Book/page photos .jpg .png', set3: 'Word → Hangul settings', wantHwp: 'Also download a .hwp file', wantHwpS: 'For older Hangul versions. Downloads the document engine (about 27 MB) the first time.', getHwp5: 'Download .hwp', set4: 'Book/photo → Hangul settings', bookHint: 'Drop phone photos of book pages (several at once; file-name order is page order). The page size, margins, type size, line spacing, letter spacing and characters per line are measured and rebuilt as a Hangul file. Shoot straight from above with all four corners of the page visible for the best result.', bookSize: 'Book size', bsAuto: 'Automatic (from the photo proportions)', bookLines: 'Keep the line breaks exactly as in the book', bookLinesS: 'Every line has the same characters as the original, but lines will not reflow when you edit.', bookPages: 'One photo = one page', pdfBook: 'Also rebuild scanned PDFs (no text) this way', rPhotoHwp: 'Photo → Hangul', photos: '{n} photo(s)', reading: 'Reading text… page {n}', engine: 'Downloading the document engine (first time only)…', measured: 'Measured: {size} · margins top {t} bottom {b} left {l} right {r} mm · type {pt} pt · line spacing {lp}% · letter spacing {sp}% · {cpl} chars/line · {lpp} lines/page', droppedHead: 'Running heads and page numbers were left out of the text: {list}', notPage: 'The page edges were not found, so the whole photo was treated as the page. Showing all four corners gives exact margins.', spreadNote: 'A two-page spread was split into left and right pages.', errImage: 'Could not open the photo (convert iPhone HEIC to JPG): {why}', errHwpx2: 'Could not convert the .hwpx file: {why}',
+    hwpxIn: 'Hangul .hwpx', photoFile: 'Book/page photos (JPG, PNG, HEIC, TIFF…)', set3: 'Word → Hangul settings', wantHwp: 'Also download a .hwp file', wantHwpS: 'For older Hangul versions. Downloads the document engine (about 27 MB) the first time.', getHwp5: 'Download .hwp', set4: 'Book/photo → Hangul settings', bookHint: 'Drop phone photos of book pages (several at once; file-name order is page order). The page size, margins, type size, line spacing, letter spacing and characters per line are measured and rebuilt as a Hangul file. Shoot straight from above with all four corners of the page visible for the best result.', bookSize: 'Book size', bsAuto: 'Automatic (from the photo proportions)', bookLines: 'Keep the line breaks exactly as in the book', bookLinesS: 'Every line has the same characters as the original, but lines will not reflow when you edit.', bookPages: 'One photo = one page', pdfBook: 'Also rebuild scanned PDFs (no text) this way', rPhotoHwp: 'Photo → Hangul', photos: '{n} photo(s)', reading: 'Reading text… page {n}', engine: 'Downloading the document engine (first time only)…', measured: 'Measured: {size} · margins top {t} bottom {b} left {l} right {r} mm · type {pt} pt · line spacing {lp}% · letter spacing {sp}% · {cpl} chars/line · {lpp} lines/page', droppedHead: 'Running heads and page numbers were left out of the text: {list}', notPage: 'The page edges were not found, so the whole photo was treated as the page. Showing all four corners gives exact margins.', spreadNote: 'A two-page spread was split into left and right pages.', errImage: 'Could not open the photo. Reload the page (Ctrl+F5) and try again. ({why})', errHwpx2: 'Could not convert the .hwpx file: {why}',
     pick: 'Choose files',
     private: 'You can drop several files at once. Conversion happens entirely in this browser; your files are not uploaded anywhere.',
     set1: 'Hangul → Word settings',
@@ -309,7 +309,7 @@ window.I18N = {
     g2: 'Not supported yet',
     g2a: 'Text in photos is read by OCR and may contain mistakes; the typeface cannot be identified, so a similar serif is used.', g2b: 'Headers and footers in Word files',
     g2c: 'Hangul 3.x files (before 1997)',
-    g2d: 'Password-protected files, the old Word format (.doc)', g2e: 'iPhone HEIC photos (convert them to JPG first)',
+    g2d: 'Password-protected files, the old Word format (.doc)', g2e: 'Camera RAW (.cr2, .nef…) and PSD files (convert them to JPG first)',
     license: 'Free for anyone to use and modify (MIT License)',
     srcLink: 'Source and release notes', issueLink: 'Report a document that does not convert well',
     converting: 'Converting…', failed: 'Could not convert',
@@ -337,7 +337,7 @@ window.I18N = {
     lead: '字体、字间距、行距、页边距和表格样式都会原样保留。我们测量了两个程序实际摆放每个字的位置，转换后文字不会跑到别的行。Hangul 是韩国 Hancom 公司的文字处理软件（.hwp / .hwpx）。',
     dropAria: '放置文件的区域', dropH2: '把要转换的文件拖到这里',
     hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
-    hwpxIn: 'Hangul .hwpx', photoFile: '书页照片 .jpg .png', set3: 'Word → Hangul 设置', wantHwp: '同时下载 .hwp 文件', wantHwpS: '供旧版 Hangul 使用。首次会下载文档引擎（约 27MB）。', getHwp5: '下载 .hwp', set4: '书页照片 → Hangul 设置', bookHint: '放入用手机拍摄的书页照片（可一次放多张，按文件名排序作为页序），将测量开本、页边距、字号、行距、字距和每行字数，生成版式相同的 Hangul 文件。从正上方拍摄并露出纸张四角，结果最准确。', bookSize: '开本', bsAuto: '自动（按照片比例推测）', bookLines: '换行位置与原书完全一致', bookLinesS: '每行字数与原书完全相同，但修改文字后不会重新排行。', bookPages: '一张照片 = 一页', pdfBook: '无文字（扫描）PDF 也按书页版式重建', rPhotoHwp: '照片 → Hangul', photos: '照片 {n} 张', reading: '正在识别文字…第 {n} 页', engine: '正在下载文档引擎（仅首次）…', measured: '测量值：{size} · 页边距 上{t} 下{b} 左{l} 右{r}mm · 字号 {pt}pt · 行距 {lp}% · 字距 {sp}% · 每行 {cpl} 字 · 每页 {lpp} 行', droppedHead: '页眉和页码已从正文中去掉：{list}', notPage: '未找到纸张边缘，已将整张照片视为一页。拍出四个角可使页边距更准确。', spreadNote: '已将左右对开的照片分成两页。', errImage: '无法打开照片（iPhone 的 HEIC 请先转为 JPG）：{why}', errHwpx2: '无法转换 .hwpx 文件：{why}',
+    hwpxIn: 'Hangul .hwpx', photoFile: '书页照片（JPG、PNG、HEIC、TIFF 等）', set3: 'Word → Hangul 设置', wantHwp: '同时下载 .hwp 文件', wantHwpS: '供旧版 Hangul 使用。首次会下载文档引擎（约 27MB）。', getHwp5: '下载 .hwp', set4: '书页照片 → Hangul 设置', bookHint: '放入用手机拍摄的书页照片（可一次放多张，按文件名排序作为页序），将测量开本、页边距、字号、行距、字距和每行字数，生成版式相同的 Hangul 文件。从正上方拍摄并露出纸张四角，结果最准确。', bookSize: '开本', bsAuto: '自动（按照片比例推测）', bookLines: '换行位置与原书完全一致', bookLinesS: '每行字数与原书完全相同，但修改文字后不会重新排行。', bookPages: '一张照片 = 一页', pdfBook: '无文字（扫描）PDF 也按书页版式重建', rPhotoHwp: '照片 → Hangul', photos: '照片 {n} 张', reading: '正在识别文字…第 {n} 页', engine: '正在下载文档引擎（仅首次）…', measured: '测量值：{size} · 页边距 上{t} 下{b} 左{l} 右{r}mm · 字号 {pt}pt · 行距 {lp}% · 字距 {sp}% · 每行 {cpl} 字 · 每页 {lpp} 行', droppedHead: '页眉和页码已从正文中去掉：{list}', notPage: '未找到纸张边缘，已将整张照片视为一页。拍出四个角可使页边距更准确。', spreadNote: '已将左右对开的照片分成两页。', errImage: '无法打开照片。请刷新页面（Ctrl+F5）后重试。（{why}）', errHwpx2: '无法转换 .hwpx 文件：{why}',
     pick: '选择文件',
     private: '可以一次拖入多个文件。转换完全在此浏览器内完成，文件不会上传到任何地方。',
     set1: 'Hangul → Word 设置',
@@ -356,7 +356,7 @@ window.I18N = {
     g2: '暂不支持',
     g2a: '照片中的文字通过 OCR 识别，可能有错；无法识别字体，改用相近的宋体类字体。', g2b: 'Word 文件的页眉和页脚',
     g2c: 'Hangul 3.x 文件',
-    g2d: '设有密码的文件、旧版 Word 格式（.doc）', g2e: 'iPhone 的 HEIC 照片（请先转为 JPG）',
+    g2d: '设有密码的文件、旧版 Word 格式（.doc）', g2e: '相机 RAW 文件（.cr2、.nef 等）和 PSD（请先转为 JPG）',
     license: '任何人都可以自由使用和修改（MIT 许可证）',
     srcLink: '源代码与更新记录', issueLink: '反馈转换效果不好的文档',
     converting: '正在转换…', failed: '转换失败',
@@ -384,7 +384,7 @@ window.I18N = {
     lead: 'フォント、字間、行間、余白、表の形までそのまま移します。変換後に文字が別の行にずれないよう、両方のソフトが実際に文字を置く位置を測って合わせました。Hangul は韓国 Hancom 社のワープロソフトです（.hwp / .hwpx）。',
     dropAria: 'ファイルを置く場所', dropH2: '変換するファイルをここにドロップ',
     hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
-    hwpxIn: 'Hangul .hwpx', photoFile: '本・文書の写真 .jpg .png', set3: 'Word → Hangul の設定', wantHwp: '.hwpx と一緒に .hwp も保存', wantHwpS: '旧バージョンの Hangul 用。初回だけ文書エンジン（約 27MB）を取得します。', getHwp5: '.hwp を保存', set4: '本・写真 → Hangul の設定', bookHint: 'スマートフォンで撮った本のページの写真（複数可。ファイル名の順がページ順）を入れると、判型・余白・文字サイズ・行間・字間・1行の文字数を測り、同じ組版の Hangul ファイルを作ります。真上から、紙の四隅が写るように撮ると正確です。', bookSize: '判型', bsAuto: '自動（写真の比率から推定）', bookLines: '改行位置を原本と完全に同じにする', bookLinesS: '1行の文字数が原本と完全に同じになりますが、文字を直しても行は組み直されません。', bookPages: '写真1枚 = 1ページ', pdfBook: '文字のない（スキャン）PDF も本の組版のまま作る', rPhotoHwp: '写真 → Hangul', photos: '写真 {n} 枚', reading: '文字を認識中… {n} ページ', engine: '文書エンジンを取得中（初回のみ）…', measured: '測定値：{size} · 余白 上{t} 下{b} 左{l} 右{r}mm · 文字 {pt}pt · 行間 {lp}% · 字間 {sp}% · 1行 {cpl} 字 · 1ページ {lpp} 行', droppedHead: '柱とページ番号は本文から外しました：{list}', notPage: '紙の端が見つからなかったため、写真全体を1ページとしました。四隅が写るように撮ると余白が正確になります。', spreadNote: '見開きの写真を左右のページに分けました。', errImage: '写真を開けませんでした（iPhone の HEIC は JPG に変換してください）：{why}', errHwpx2: '.hwpx ファイルを変換できませんでした：{why}',
+    hwpxIn: 'Hangul .hwpx', photoFile: '本・文書の写真（JPG・PNG・HEIC・TIFF など）', set3: 'Word → Hangul の設定', wantHwp: '.hwpx と一緒に .hwp も保存', wantHwpS: '旧バージョンの Hangul 用。初回だけ文書エンジン（約 27MB）を取得します。', getHwp5: '.hwp を保存', set4: '本・写真 → Hangul の設定', bookHint: 'スマートフォンで撮った本のページの写真（複数可。ファイル名の順がページ順）を入れると、判型・余白・文字サイズ・行間・字間・1行の文字数を測り、同じ組版の Hangul ファイルを作ります。真上から、紙の四隅が写るように撮ると正確です。', bookSize: '判型', bsAuto: '自動（写真の比率から推定）', bookLines: '改行位置を原本と完全に同じにする', bookLinesS: '1行の文字数が原本と完全に同じになりますが、文字を直しても行は組み直されません。', bookPages: '写真1枚 = 1ページ', pdfBook: '文字のない（スキャン）PDF も本の組版のまま作る', rPhotoHwp: '写真 → Hangul', photos: '写真 {n} 枚', reading: '文字を認識中… {n} ページ', engine: '文書エンジンを取得中（初回のみ）…', measured: '測定値：{size} · 余白 上{t} 下{b} 左{l} 右{r}mm · 文字 {pt}pt · 行間 {lp}% · 字間 {sp}% · 1行 {cpl} 字 · 1ページ {lpp} 行', droppedHead: '柱とページ番号は本文から外しました：{list}', notPage: '紙の端が見つからなかったため、写真全体を1ページとしました。四隅が写るように撮ると余白が正確になります。', spreadNote: '見開きの写真を左右のページに分けました。', errImage: '写真を開けませんでした。ページを再読み込み（Ctrl+F5）してもう一度お試しください。（{why}）', errHwpx2: '.hwpx ファイルを変換できませんでした：{why}',
     pick: 'ファイルを選ぶ',
     private: '複数のファイルをまとめてドロップできます。変換はこのブラウザの中だけで行われ、ファイルはどこにもアップロードされません。',
     set1: 'Hangul → Word の設定',
@@ -403,7 +403,7 @@ window.I18N = {
     g2: 'まだ移せないもの',
     g2a: '写真の文字は OCR で読むため誤りが出ることがあります。書体は判別できないため近い明朝体を使います。', g2b: 'Word のヘッダーとフッター',
     g2c: 'Hangul 3.x のファイル',
-    g2d: 'パスワード付きのファイル、旧形式の Word（.doc）', g2e: 'iPhone の HEIC 写真（JPG に変換してから入れてください）',
+    g2d: 'パスワード付きのファイル、旧形式の Word（.doc）', g2e: 'カメラの RAW ファイル（.cr2・.nef など）と PSD（JPG に変換してから入れてください）',
     license: 'だれでも自由に使い、改変できます（MIT ライセンス）',
     srcLink: 'ソースと更新履歴', issueLink: 'うまく変換できない文書を知らせる',
     converting: '変換中…', failed: '変換できませんでした',
@@ -604,7 +604,7 @@ window.I18N_NOTES = [
   }
 
   // ── 책·문서 사진 → 한글 ──
-  const IMG = /\.(jpe?g|png|webp|heic|heif)$/i;
+  const IMG = /\.(jpe?g|jfif|png|webp|heic|heif|avif|gif|bmp|tiff?)$/i;
   // 스캔 PDF인지 보고(앞 세 쪽에 글자가 거의 없으면), 쪽을 그림으로 그린다
   async function scannedPdfPages(bytes, pdfjs) {
     const doc = await pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false, verbosity: 0 }).promise;

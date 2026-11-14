@@ -52,7 +52,7 @@
 
 ## 한계
 
-- 워드의 머리말·꼬리말, 암호 걸린 파일, 한글 3.0 이전(.hwp 3.x) 파일, .doc, 아이폰 HEIC 사진(JPG로 바꿔 넣기)은 아직 안 됩니다.
+- 워드의 머리말·꼬리말, 암호 걸린 파일, 한글 3.0 이전(.hwp 3.x) 파일, .doc, 카메라 RAW·PSD 파일은 아직 안 됩니다.
 - 수식은 한글 수식 스크립트 ↔ 워드 수식(OMML)으로 다시 짓습니다. 분수·근호·첨자·∑∫·괄호·행렬·경우(cases)·강세 기호는 옮기지만, 글꼴 지시(rm·it·bold)와 글자 크기 비율(scale)은 버리고 세세한 간격은 각 프로그램의 수식 조판을 따릅니다. 워드→한글 수식의 크기는 어림값이며 한글이 열 때 다시 그립니다.
 - 각주·미주의 번호는 한글처럼 '1)' 모양으로 맞추지만, 번호 모양(로마 숫자 등)·각주 구분선 길이·각주 사이 간격은 각 프로그램의 기본값을 따릅니다.
 - 표 캡션은 표 위·아래 문단으로 옮깁니다. 왼쪽·오른쪽 캡션은 표 아래로 옮깁니다.
@@ -82,7 +82,7 @@ node cli-pdf.mjs 문서.pdf 이름 --docx
 
 ## 책·문서 사진 → 한글, .hwpx → 워드, .hwp로 받기 (0.7)
 
-- **책 사진 → 한글**: 휴대폰으로 찍은 책 쪽 사진(JPG·PNG, 여러 장이면 파일 이름 순서가 쪽 순서)이나 스캔한 PDF를 넣으면, 종이 네 모서리를 찾아 반듯하게 편 뒤 글자를 읽고(tesseract.js, 한국어+영어), **판형·여백·글자 크기·줄 간격·자간·줄당 글자 수·쪽당 줄 수·첫 줄 들여쓰기·문단**을 재서 같은 모양의 .hwpx로 만듭니다. 잰 값은 결과 칸에 보여 줍니다.
+- **책 사진 → 한글**: 휴대폰으로 찍은 책 쪽 사진(JPG·PNG·HEIC/HEIF·TIFF·WebP·AVIF·BMP·GIF — 형식은 확장자가 아니라 파일 앞머리로 알아냄, 여러 장이면 파일 이름 순서가 쪽 순서)이나 스캔한 PDF를 넣으면, 종이 네 모서리를 찾아 반듯하게 편 뒤 글자를 읽고(tesseract.js, 한국어+영어), **판형·여백·글자 크기·줄 간격·자간·줄당 글자 수·쪽당 줄 수·첫 줄 들여쓰기·문단**을 재서 같은 모양의 .hwpx로 만듭니다. 잰 값은 결과 칸에 보여 줍니다.
   - 판형은 사진 비율로 고르거나(신국판·국판 등) 설정에서 직접 고릅니다. 자간은 꽉 찬 줄의 글자가 한글에서도 판면 폭을 정확히 채우도록 계산합니다.
   - 머리글(책 제목·장 제목)과 쪽 번호는 본문에서 뺍니다. 펼친 두 쪽 사진은 왼쪽·오른쪽으로 나눕니다.
   - '줄 바뀌는 자리 고정'을 켜면 줄마다 원본과 같은 글자가 들어갑니다.
@@ -141,6 +141,8 @@ MIT — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있습니다. `LICE
 - [cfb](https://github.com/SheetJS/js-cfb) (Apache-2.0), [fflate](https://github.com/101arrowz/fflate) (MIT)
 - [rhwp](https://github.com/edwardkim/rhwp) @rhwp/core 0.9.0 (MIT, Copyright (c) 2025-2026 Edward Kim) — .hwpx 읽기·.hwp 저장. 저장소에 넣지 않고 쓸 때 jsDelivr에서 받음.
 - [tesseract.js](https://github.com/naptha/tesseract.js) (Apache-2.0) — 사진·스캔 글자 인식
+- [heic-to](https://github.com/hoppergee/heic-to) 1.6.7 (LGPL-3.0, libheif) — 아이폰 HEIC·HEIF 사진 풀기. 고치지 않은 그대로 쓸 때 jsDelivr에서 받음.
+- [UTIF.js](https://github.com/photopea/UTIF.js) (utif2, MIT) — TIFF(스캐너) 사진 풀기
 - 수식 변환(한글 수식 ↔ LaTeX, 워드 수식 → LaTeX)과 배포용 문서의 AES 복호: [kordoc](https://github.com/chrisryugj/kordoc) 4.24.74 (MIT, Copyright (c) 2026 chrisryugj) — `src/kordoc-vendor.mjs`에 묶어 넣음. 워드 수식 배열(eqArr)을 줄 단위·cases로 읽도록 조금 고침.
 
 ---

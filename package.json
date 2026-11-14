@@ -1,6 +1,6 @@
 {
   "name": "hwp2docx",
-  "version": "0.7.1",
+  "version": "0.7.3",
   "description": "한글(HWP) ↔ 워드(DOCX), PDF → 한글 서식 그대로 변환",
   "type": "module",
   "bin": {
@@ -16,7 +16,8 @@
     "cfb": "^1.2.2",
     "fflate": "^0.8.2",
     "pdfjs-dist": "^4.10.38",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "utif2": "^4.1.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
