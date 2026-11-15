@@ -195,6 +195,12 @@
         <option value="a4">A4 210×297</option>
         <option value="pocket">문고판·A6 105×148</option>
       </select></label>
+    <label class="select"><span data-i18n="bookGroup">사진 여러 장을</span>
+      <select id="bookGroup">
+        <option value="auto" data-i18n="bgAuto">자동: 같은 책끼리 한 파일, 다른 책은 따로</option>
+        <option value="one" data-i18n="bgOne">모두 한 파일로(한 권)</option>
+        <option value="each" data-i18n="bgEach">사진마다 따로 파일로</option>
+      </select></label>
     <label><input type="checkbox" id="bookLines" checked><span><span data-i18n="bookLines">줄 바뀌는 자리를 원본과 똑같이 고정</span><small data-i18n="bookLinesS">줄당 글자 수가 원본과 완전히 같아집니다. 대신 글을 고치면 줄이 다시 맞춰지지 않습니다.</small></span></label>
     <label><input type="checkbox" id="bookPages" checked><span><span data-i18n="bookPages">사진 한 장 = 한 쪽으로 쪽 나눔 맞추기</span></span></label>
     <label><input type="checkbox" id="bookSpell" checked><span><span data-i18n="bookSpell">틀린 글자·띄어쓰기 바로잡기</span><small data-i18n="bookSpellS">한국어 형태소 분석기로 글자 인식이 헷갈린 글자(흘날렸다 → 흩날렸다)와 붙거나 떨어진 띄어쓰기를 고칩니다. 띄어쓰기는 사진에서 잰 글자 사이 빈칸이 뒷받침할 때만 바꿔 원본을 따릅니다. 처음 한 번 언어 모형(약 28MB)을 받습니다.</small></span></label>
@@ -233,7 +239,7 @@
   </footer>
 </div>
 
-<script src="hwp2docx.bundle.js?v=0.8.2"></script>
+<script src="hwp2docx.bundle.js?v=0.8.5"></script>
 <script>
 // 화면 글 — 한국어(ko)·영어(en)·중국어(zh)·일본어(ja)
 window.I18N = {
@@ -245,7 +251,7 @@ window.I18N = {
     lead: '글꼴, 자간, 줄 간격, 여백, 표 모양까지 그대로 옮깁니다. 바꾼 뒤에 글자가 다른 줄로 밀리지 않도록, 두 프로그램이 실제로 글자를 놓는 자리를 재서 맞췄습니다.',
     dropAria: '파일 놓는 곳', dropH2: '바꿀 파일을 여기에 놓으세요',
     hwpFile: '한글 .hwp', docxFile: '워드 .docx', hwpxFile: '한글 .hwpx',
-    hwpxIn: '한글 .hwpx', photoFile: '책·문서 사진 (JPG·PNG·HEIC·TIFF 등)', set3: '워드 → 한글 설정', wantHwp: '.hwpx와 함께 .hwp 파일도 받기', wantHwpS: '옛 한글 버전용. 처음 한 번 문서 엔진(약 27MB)을 받습니다.', getHwp5: '.hwp 받기', set4: '책·사진 → 한글 설정', bookHint: '책을 휴대폰으로 찍은 사진(여러 장이면 한꺼번에, 파일 이름 순서가 쪽 순서)을 넣으면 판형·여백·글자 크기·줄 간격·자간·줄당 글자 수를 재서 같은 모양의 한글 파일로 만듭니다. 종이 네 모서리가 다 보이게, 위에서 반듯하게 찍을수록 정확합니다.', bookSize: '책 판형', bsAuto: '자동(사진 비율로 추정)', bookLines: '줄 바뀌는 자리를 원본과 똑같이 고정', bookLinesS: '줄당 글자 수가 원본과 완전히 같아집니다. 대신 글을 고치면 줄이 다시 맞춰지지 않습니다.', bookPages: '사진 한 장 = 한 쪽으로 쪽 나눔 맞추기', pdfBook: '글자가 없는(스캔) PDF도 책 모양 그대로 만들기', bookSpell: '틀린 글자·띄어쓰기 바로잡기', bookSpellS: '한국어 형태소 분석기로 글자 인식이 헷갈린 글자(흘날렸다 → 흩날렸다)와 붙거나 떨어진 띄어쓰기를 고칩니다. 띄어쓰기는 사진에서 잰 글자 사이 빈칸이 뒷받침할 때만 바꿔 원본을 따릅니다. 처음 한 번 언어 모형(약 28MB)을 받습니다.', bookMark: '고친 곳 색으로 표시', bookMarkS: '고친 글자는 노란색, 띄어쓰기를 고친 낱말은 연두색 바탕으로 칠해 둡니다. 확인한 뒤 한글에서 [모양] → [글자 모양] → 음영 색 \'없음\'으로 한꺼번에 지울 수 있습니다.', spellLoad: '맞춤법 모형 받는 중(처음 한 번, 약 28MB)…', spelling: '맞춤법·띄어쓰기 살피는 중…', fixedN: '틀린 글자 {t}곳, 띄어쓰기 {s}줄을 고쳤습니다: {list}', spellFail: '맞춤법 모형을 받지 못해 고치기는 건너뛰었습니다. ({why})', rPhotoHwp: '사진 → 한글', photos: '사진 {n}장', reading: '글자 읽는 중… {n}쪽', engine: '문서 엔진 받는 중(처음 한 번)…', measured: '잰 값: {size} · 여백 위 {t} 아래 {b} 왼쪽 {l} 오른쪽 {r}mm · 글자 {pt}pt · 줄 간격 {lp}% · 자간 {sp}% · 줄당 {cpl}자 · 쪽당 {lpp}줄', droppedHead: '머리글·쪽 번호는 본문에서 뺐습니다: {list}', notPage: '종이 가장자리를 찾지 못해 사진 전체를 한 쪽으로 보았습니다. 네 모서리가 보이게 찍으면 여백이 정확해집니다.', spreadNote: '펼친 두 쪽 사진을 왼쪽·오른쪽 쪽으로 나눴습니다.', errImage: '사진을 열지 못했습니다. 페이지를 새로 고침(Ctrl+F5)한 뒤 다시 넣어 보세요. ({why})', errHwpx2: '.hwpx 파일을 바꾸지 못했습니다: {why}',
+    hwpxIn: '한글 .hwpx', photoFile: '책·문서 사진 (JPG·PNG·HEIC·TIFF 등)', set3: '워드 → 한글 설정', wantHwp: '.hwpx와 함께 .hwp 파일도 받기', wantHwpS: '옛 한글 버전용. 처음 한 번 문서 엔진(약 27MB)을 받습니다.', getHwp5: '.hwp 받기', set4: '책·사진 → 한글 설정', bookHint: '책을 휴대폰으로 찍은 사진(여러 장이면 한꺼번에, 파일 이름 순서가 쪽 순서)을 넣으면 판형·여백·글자 크기·줄 간격·자간·줄당 글자 수를 재서 같은 모양의 한글 파일로 만듭니다. 종이 네 모서리가 다 보이게, 위에서 반듯하게 찍을수록 정확합니다.', bookSize: '책 판형', bsAuto: '자동(사진 비율로 추정)', bookLines: '줄 바뀌는 자리를 원본과 똑같이 고정', bookLinesS: '줄당 글자 수가 원본과 완전히 같아집니다. 대신 글을 고치면 줄이 다시 맞춰지지 않습니다.', bookPages: '사진 한 장 = 한 쪽으로 쪽 나눔 맞추기', pdfBook: '글자가 없는(스캔) PDF도 책 모양 그대로 만들기', bookGroup: '사진 여러 장을', bgAuto: '자동: 같은 책끼리 한 파일, 다른 책은 따로', bgOne: '모두 한 파일로(한 권)', bgEach: '사진마다 따로 파일로', splitBooks: '서로 다른 책 {n}권으로 보여 책마다 따로 만들었습니다(설정에서 바꿀 수 있습니다).', bookSpell: '틀린 글자·띄어쓰기 바로잡기', bookSpellS: '한국어 형태소 분석기로 글자 인식이 헷갈린 글자(흘날렸다 → 흩날렸다)와 붙거나 떨어진 띄어쓰기를 고칩니다. 띄어쓰기는 사진에서 잰 글자 사이 빈칸이 뒷받침할 때만 바꿔 원본을 따릅니다. 처음 한 번 언어 모형(약 28MB)을 받습니다.', bookMark: '고친 곳 색으로 표시', bookMarkS: '고친 글자는 노란색, 띄어쓰기를 고친 낱말은 연두색 바탕으로 칠해 둡니다. 확인한 뒤 한글에서 [모양] → [글자 모양] → 음영 색 \'없음\'으로 한꺼번에 지울 수 있습니다.', spellLoad: '맞춤법 모형 받는 중(처음 한 번, 약 28MB)…', spelling: '맞춤법·띄어쓰기 살피는 중…', fixedN: '틀린 글자 {t}곳, 띄어쓰기 {s}줄을 고쳤습니다: {list}', spellFail: '맞춤법 모형을 받지 못해 고치기는 건너뛰었습니다. ({why})', rPhotoHwp: '사진 → 한글', photos: '사진 {n}장', reading: '글자 읽는 중… {n}쪽', engine: '문서 엔진 받는 중(처음 한 번)…', measured: '잰 값: {size} · 여백 위 {t} 아래 {b} 왼쪽 {l} 오른쪽 {r}mm · 글자 {pt}pt · 줄 간격 {lp}% · 자간 {sp}% · 줄당 {cpl}자 · 쪽당 {lpp}줄', droppedHead: '머리글·쪽 번호는 본문에서 뺐습니다: {list}', notPage: '종이 가장자리를 찾지 못해 사진 전체를 한 쪽으로 보았습니다. 네 모서리가 보이게 찍으면 여백이 정확해집니다.', spreadNote: '펼친 두 쪽 사진을 왼쪽·오른쪽 쪽으로 나눴습니다.', errImage: '사진을 열지 못했습니다. 페이지를 새로 고침(Ctrl+F5)한 뒤 다시 넣어 보세요. ({why})', errHwpx2: '.hwpx 파일을 바꾸지 못했습니다: {why}',
     pick: '파일 고르기',
     private: '여러 개를 한꺼번에 놓아도 됩니다. 변환은 이 브라우저 안에서 끝나고, 파일은 어디에도 올라가지 않습니다.',
     set1: '한글 → 워드 설정',
@@ -292,7 +298,7 @@ window.I18N = {
     lead: 'Fonts, letter spacing, line spacing, margins and table layout carry over as they are. We measured where each program actually places every character, so text does not slip onto another line after conversion. Hangul is the Korean word processor by Hancom (.hwp / .hwpx).',
     dropAria: 'Drop files here', dropH2: 'Drop the files to convert here',
     hwpFile: 'Hangul .hwp', docxFile: 'Word .docx', hwpxFile: 'Hangul .hwpx',
-    hwpxIn: 'Hangul .hwpx', photoFile: 'Book/page photos (JPG, PNG, HEIC, TIFF…)', set3: 'Word → Hangul settings', wantHwp: 'Also download a .hwp file', wantHwpS: 'For older Hangul versions. Downloads the document engine (about 27 MB) the first time.', getHwp5: 'Download .hwp', set4: 'Book/photo → Hangul settings', bookHint: 'Drop phone photos of book pages (several at once; file-name order is page order). The page size, margins, type size, line spacing, letter spacing and characters per line are measured and rebuilt as a Hangul file. Shoot straight from above with all four corners of the page visible for the best result.', bookSize: 'Book size', bsAuto: 'Automatic (from the photo proportions)', bookLines: 'Keep the line breaks exactly as in the book', bookLinesS: 'Every line has the same characters as the original, but lines will not reflow when you edit.', bookPages: 'One photo = one page', pdfBook: 'Also rebuild scanned PDFs (no text) this way', bookSpell: 'Fix misread letters and word spacing (Korean)', bookSpellS: 'A Korean morphological analyser corrects letters the OCR confused and words that were run together or split. Spacing is changed only where the gaps measured in the photo support it, so the book’s own spacing is kept. Downloads a language model (about 28 MB) the first time.', bookMark: 'Highlight the corrections', bookMarkS: 'Corrected letters get a yellow background, re-spaced words a light green one. Remove all highlighting in Hangul afterwards via Format → Character shape → shade colour “None”.', spellLoad: 'Downloading the spelling model (first time, about 28 MB)…', spelling: 'Checking spelling and spacing…', fixedN: 'Corrected {t} misread word(s) and the spacing of {s} line(s): {list}', spellFail: 'The spelling model could not be downloaded, so corrections were skipped. ({why})', rPhotoHwp: 'Photo → Hangul', photos: '{n} photo(s)', reading: 'Reading text… page {n}', engine: 'Downloading the document engine (first time only)…', measured: 'Measured: {size} · margins top {t} bottom {b} left {l} right {r} mm · type {pt} pt · line spacing {lp}% · letter spacing {sp}% · {cpl} chars/line · {lpp} lines/page', droppedHead: 'Running heads and page numbers were left out of the text: {list}', notPage: 'The page edges were not found, so the whole photo was treated as the page. Showing all four corners gives exact margins.', spreadNote: 'A two-page spread was split into left and right pages.', errImage: 'Could not open the photo. Reload the page (Ctrl+F5) and try again. ({why})', errHwpx2: 'Could not convert the .hwpx file: {why}',
+    hwpxIn: 'Hangul .hwpx', photoFile: 'Book/page photos (JPG, PNG, HEIC, TIFF…)', set3: 'Word → Hangul settings', wantHwp: 'Also download a .hwp file', wantHwpS: 'For older Hangul versions. Downloads the document engine (about 27 MB) the first time.', getHwp5: 'Download .hwp', set4: 'Book/photo → Hangul settings', bookHint: 'Drop phone photos of book pages (several at once; file-name order is page order). The page size, margins, type size, line spacing, letter spacing and characters per line are measured and rebuilt as a Hangul file. Shoot straight from above with all four corners of the page visible for the best result.', bookSize: 'Book size', bsAuto: 'Automatic (from the photo proportions)', bookLines: 'Keep the line breaks exactly as in the book', bookLinesS: 'Every line has the same characters as the original, but lines will not reflow when you edit.', bookPages: 'One photo = one page', pdfBook: 'Also rebuild scanned PDFs (no text) this way', bookGroup: 'Several photos', bgAuto: 'Auto: one file per book, different books separately', bgOne: 'All in one file (one book)', bgEach: 'One file per photo', splitBooks: 'These look like {n} different books, so each got its own file (change this in the settings).', bookSpell: 'Fix misread letters and word spacing (Korean)', bookSpellS: 'A Korean morphological analyser corrects letters the OCR confused and words that were run together or split. Spacing is changed only where the gaps measured in the photo support it, so the book’s own spacing is kept. Downloads a language model (about 28 MB) the first time.', bookMark: 'Highlight the corrections', bookMarkS: 'Corrected letters get a yellow background, re-spaced words a light green one. Remove all highlighting in Hangul afterwards via Format → Character shape → shade colour “None”.', spellLoad: 'Downloading the spelling model (first time, about 28 MB)…', spelling: 'Checking spelling and spacing…', fixedN: 'Corrected {t} misread word(s) and the spacing of {s} line(s): {list}', spellFail: 'The spelling model could not be downloaded, so corrections were skipped. ({why})', rPhotoHwp: 'Photo → Hangul', photos: '{n} photo(s)', reading: 'Reading text… page {n}', engine: 'Downloading the document engine (first time only)…', measured: 'Measured: {size} · margins top {t} bottom {b} left {l} right {r} mm · type {pt} pt · line spacing {lp}% · letter spacing {sp}% · {cpl} chars/line · {lpp} lines/page', droppedHead: 'Running heads and page numbers were left out of the text: {list}', notPage: 'The page edges were not found, so the whole photo was treated as the page. Showing all four corners gives exact margins.', spreadNote: 'A two-page spread was split into left and right pages.', errImage: 'Could not open the photo. Reload the page (Ctrl+F5) and try again. ({why})', errHwpx2: 'Could not convert the .hwpx file: {why}',
     pick: 'Choose files',
     private: 'You can drop several files at once. Conversion happens entirely in this browser; your files are not uploaded anywhere.',
     set1: 'Hangul → Word settings',
@@ -637,13 +643,26 @@ window.I18N_NOTES = [
       const files = [];
       // 요즘 크롬은 File에도 bytes() 함수가 있어, 그 이름만 보고 판단하면 안 된다
       for (const f of list) files.push(f.bytes instanceof Uint8Array ? f : { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
-      r = await Hwp2Docx.photosToHwpx(files, { size: $('bookSize').value || undefined, keepLines: $('bookLines').checked, pageBreaks: $('bookPages').checked, spell: $('bookSpell').checked, markFixes: $('bookSpell').checked && $('bookMark').checked,
+      r = await Hwp2Docx.photosToHwpx(files, { size: $('bookSize').value || undefined, keepLines: $('bookLines').checked, pageBreaks: $('bookPages').checked, group: title ? 'one' : $('bookGroup').value, spell: $('bookSpell').checked, markFixes: $('bookSpell').checked && $('bookMark').checked,
         onProgress: (p) => { meta.textContent = p.step === 'spellLoad' ? t('spellLoad') : p.step === 'spell' ? t('spelling') : t('reading', { n: p.page }); } });
     } catch (e) {
       console.error(e);
       const why = e?.message || String(e);
       if (e?.code === 'NO_TEXT') return fail(t('errNoText'));
       return fail(e?.code === 'IMAGE_DECODE' ? t('errImage', { why }) : t('errPdf', { why }));
+    }
+    // 다른 책을 찍은 사진들: 책마다 따로 내려받기
+    if (r.files?.length > 1) {
+      meta.innerHTML = '';
+      meta.append(el('b', null, t('rPhotoHwp')), document.createTextNode('  ' + t('splitBooks', { n: r.files.length })));
+      r.files.forEach((fl) => {
+        const nm = fl.names[0].replace(/\.[^.]+$/, '') + (fl.names.length > 1 ? '_외' + (fl.names.length - 1) : '');
+        const a2 = el('a', 'get', t('getHwp') + ' · ' + nm);
+        a2.href = URL.createObjectURL(new Blob([fl.hwpx], { type: 'application/hwp+zip' }));
+        a2.download = nm + '.hwpx';
+        row.append(a2);
+      });
+      return;
     }
     const base = (title || list[0].name).replace(/\.[^.]+$/, '');
     const a = el('a', 'get', t('getHwp'));

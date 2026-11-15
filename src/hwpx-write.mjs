@@ -273,7 +273,7 @@ export function buildHwpx(model, opts = {}) {
       + `<hp:shadow type="NONE" color="#B2B2B2" offsetX="0" offsetY="0" alpha="0"/>`
       + `<hc:startPt x="${sx}" y="${sy}"/><hc:endPt x="${ex}" y="${ey}"/>`
       + `<hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/>`
-      + `<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" holdAnchorAndSO="0" vertRelTo="PAPER" horzRelTo="PAPER" vertAlign="TOP" horzAlign="LEFT" vertOffset="${H(y0)}" horzOffset="${H(x0)}"/>`
+      + `<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" holdAnchorAndSO="0" vertRelTo="${fl.vrel || 'PAPER'}" horzRelTo="PAPER" vertAlign="TOP" horzAlign="LEFT" vertOffset="${H(y0)}" horzOffset="${H(x0)}"/>`
       + `<hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:line>`;
   }
   function rectShapeXml(fl) {
@@ -290,7 +290,7 @@ export function buildHwpx(model, opts = {}) {
       + `<hp:shadow type="NONE" color="#B2B2B2" offsetX="0" offsetY="0" alpha="0"/>`
       + `<hc:pt0 x="0" y="0"/><hc:pt1 x="${w}" y="0"/><hc:pt2 x="${w}" y="${h}"/><hc:pt3 x="0" y="${h}"/>`
       + `<hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/>`
-      + `<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" holdAnchorAndSO="0" vertRelTo="PAPER" horzRelTo="PAPER" vertAlign="TOP" horzAlign="LEFT" vertOffset="${H(fl.y || 0)}" horzOffset="${H(fl.x || 0)}"/>`
+      + `<hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="0" allowOverlap="1" holdAnchorAndSO="0" vertRelTo="${fl.vrel || 'PAPER'}" horzRelTo="PAPER" vertAlign="TOP" horzAlign="LEFT" vertOffset="${H(fl.y || 0)}" horzOffset="${H(fl.x || 0)}"/>`
       + `<hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:rect>`;
   }
   function imgBlockXml(b, env) {

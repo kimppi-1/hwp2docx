@@ -451,13 +451,13 @@ export function marginMap(g, W, H) {
   return { Lf, Rf, L0, R0, W, H };
 }
 const marginSrcX = (M, x, y) => { const l = M.Lf.a + M.Lf.b * y, r = M.Rf.a + M.Rf.b * y; return l + (x - M.L0) * (r - l) / (M.R0 - M.L0); };
-export function applyMarginMap(g, W, H, M, fill = 255) {
-  const o = new Uint8Array(W * H);
+export function applyMarginMap(g, W, H, M, fill = 255, outW = W) {
+  const o = new Uint8Array(outW * H);
   for (let y = 0; y < H; y++) {
     const l = M.Lf.a + M.Lf.b * y, r = M.Rf.a + M.Rf.b * y, sc = (r - l) / (M.R0 - M.L0);
-    for (let x = 0; x < W; x++) {
+    for (let x = 0; x < outW; x++) {
       const sx = l + (x - M.L0) * sc, X = Math.floor(sx), f = sx - X;
-      o[y * W + x] = X < 0 || X >= W - 1 ? fill : g[y * W + X] * (1 - f) + g[y * W + X + 1] * f;
+      o[y * outW + x] = X < 0 || X >= W - 1 ? fill : g[y * W + X] * (1 - f) + g[y * W + X + 1] * f;
     }
   }
   return o;

@@ -17,8 +17,8 @@ function wordModel(m) {
   const pg = m.page;
   const rpr = (r) => ({ fonts: { eastAsia: r.font, ascii: r.font, hAnsi: r.font, cs: r.font }, sz: Math.round(r.size * 2), color: r.color, b: r.bold, i: r.italic, ...(r.shade ? { shade: r.shade } : {}), ...(r.u ? { u: r.u, uColor: r.uColor } : {}), spaceEm: m.spaceEm ? (m.spaceEm[r.font] ?? SPACE_ADVANCE[r.font] ?? 0.5) : undefined, ...(r.spacing ? { spacing: r.spacing / 100 * r.size * 20 } : {}) });
   const mapFloat = (f) => {
-    if (f.type === 'line') return { type: 'line', x1: tw(f.x1), y1: tw(f.y1), x2: tw(f.x2), y2: tw(f.y2), w: tw(f.w), color: f.color };
-    if (f.type === 'rect') return { type: 'rect', x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h), ratio: f.ratio || 0, fill: f.fill, stroke: f.stroke ? { color: f.stroke.color, w: tw(f.stroke.w) } : null, behind: f.behind };
+    if (f.type === 'line') return { type: 'line', x1: tw(f.x1), y1: tw(f.y1), x2: tw(f.x2), y2: tw(f.y2), w: tw(f.w), color: f.color, ...(f.vrel ? { vrel: f.vrel } : {}) };
+    if (f.type === 'rect') return { type: 'rect', x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h), ratio: f.ratio || 0, fill: f.fill, stroke: f.stroke ? { color: f.stroke.color, w: tw(f.stroke.w) } : null, behind: f.behind, ...(f.vrel ? { vrel: f.vrel } : {}) };
     return { ...f, x: tw(f.x0), y: tw(f.y0), w: tw(f.w), h: tw(f.h) };
   };
   const floatsOf = (p) => {

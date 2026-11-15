@@ -154,5 +154,7 @@ export async function photosToHwpx(files, opts = {}) {
   }
   const m = await readPhotos(files, { decode: decodeImageBrowser, ocr: ocrBrowser, ocrLatin: ocrLatinBrowser, ...opts });
   if (opts.spellFailed) m.report.spellFailed = opts.spellFailed;
-  return { hwpx: bookModelToHwpx(m), report: m.report, paragraphs: m.paras.length };
+  // 다른 책을 찍은 사진들이면 책마다 따로 파일
+  const outFiles = m.groups ? m.groups.map(g => ({ names: g.names, hwpx: bookModelToHwpx(g), report: { ...g.report, ...(opts.spellFailed ? { spellFailed: opts.spellFailed } : {}) }, paragraphs: g.paras.length })) : null;
+  return { hwpx: bookModelToHwpx(m), report: m.report, paragraphs: m.paras.length, ...(outFiles ? { files: outFiles } : {}) };
 }
