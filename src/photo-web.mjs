@@ -73,17 +73,20 @@ export async function decodeImageBrowser(bytes, name) {
 }
 
 const workers = new Map();
-async function worker(lang = 'kor') {
-  if (!workers.has(lang)) workers.set(lang, (async () => {
+async function worker(lang = 'kor', psm = '6') {
+  const key = lang + '/' + psm;
+  if (!workers.has(key)) workers.set(key, (async () => {
     const Tesseract = (await import('tesseract.js')).default ?? (await import('tesseract.js'));
     const w = await Tesseract.createWorker(lang);
-    await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    await w.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
     return w;
   })());
-  return workers.get(lang);
+  return workers.get(key);
 }
-async function wordLines(lang, png) {
-  const w = await worker(lang);
+// 한글 줄 속 영어 낱말 다시 읽기(한 줄짜리 작은 그림)
+export async function ocrLatinBrowser(png) { return wordLines('eng', png, '7'); }
+async function wordLines(lang, png, psm = '6') {
+  const w = await worker(lang, psm);
   const r = await w.recognize(new Blob([png], { type: 'image/png' }), {}, { blocks: true });
   const out = [];
   for (const b of r.data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) {
@@ -149,7 +152,7 @@ export async function photosToHwpx(files, opts = {}) {
     opts.onProgress?.({ step: 'spellLoad' });
     try { opts = { ...opts, koScore: await loadKiwiBrowser() }; } catch (e) { console.warn('spell model', e); opts = { ...opts, spellFailed: String(e?.message || e) }; }
   }
-  const m = await readPhotos(files, { decode: decodeImageBrowser, ocr: ocrBrowser, ...opts });
+  const m = await readPhotos(files, { decode: decodeImageBrowser, ocr: ocrBrowser, ocrLatin: ocrLatinBrowser, ...opts });
   if (opts.spellFailed) m.report.spellFailed = opts.spellFailed;
   return { hwpx: bookModelToHwpx(m), report: m.report, paragraphs: m.paras.length };
 }

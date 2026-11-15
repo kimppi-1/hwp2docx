@@ -152,6 +152,28 @@ function warp(g, w, h, quad, W, H) {
 // 조명 고르게: 종이 바탕의 밝기(글자를 지운 밝기 지도)를 구해 나눈다 (그늘·밝기 차이가 있는 사진 대비)
 //  - 작은 격자에서 이웃 최댓값(글자 지우기) → 부드럽게 흐리기 → 양선형으로 키워서 나눈다
 //    (격자 경계가 계단처럼 남으면 글자 인식이 그 경계를 선으로 읽으므로 반드시 매끄럽게)
+// 앞장 글씨만 진하게: 종이 바탕과 글씨를 가르는 문턱(T1) 아래에서 다시 진한 앞장 글씨와 흐린 뒷장 비침을 가른다.
+//  가장 진한 글씨(B)는 검정으로, 문턱 근처(W)는 흰색으로 늘려 비친 글씨·얼룩을 지우고 앞장 획을 또렷하게 한다
+function levels(o) {
+  const env = globalThis.process?.env || {};
+  if (env.NOLEV) return o;
+  const smp = []; for (let i = 0; i < o.length; i += 5) smp.push(o[i]);
+  const T1 = otsu(smp.filter(v => v < 245));
+  const ink = smp.filter(v => v < T1);
+  if (ink.length < smp.length * 0.004) return o;
+  const T2 = otsu(ink);
+  const dark = ink.filter(v => v < T2).sort((a, b) => a - b);
+  if (!dark.length) return o;
+  const B = dark[Math.floor(dark.length * 0.05)];
+  const W = T1 - (env.LEVW != null ? +env.LEVW : -10), gam = +env.LEVG || 1.8;
+  if (W - B < 40) return o;
+  const lut = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.pow(Math.max(0, Math.min(1, (v - B) / (W - B))), gam));
+  const out = new Uint8Array(o.length);
+  for (let i = 0; i < o.length; i++) out[i] = lut[o[i]];
+  if (o.even) out.even = true;
+  return out;
+}
 function flatten(g, W, H) {
   const f = Math.max(4, Math.round(W / 60));
   const s = shrink(g, W, H, f);
@@ -380,8 +402,9 @@ export function rectifyPhoto(img) {
   const scale = Math.min(3, Math.max(1, (spread ? 3400 : 1800) / pw));
   const W = Math.round(pw * scale), H = Math.round(ph * scale);
   const raw = warp(g, img.w, img.h, quad, W, H);
-  const flat = flatten(raw, W, H);
-  const parts = splitSpread(flat, W, H);
+  const flat0 = flatten(raw, W, H);
+  const parts = splitSpread(flat0, W, H);   // 가운데 접힌 그늘은 밝기 조절 전 그림에서 찾는다
+  const flat = flat0.even ? flat0 : levels(flat0);   // 앞장 글씨만 진하게(뒷장 비침 지우기)는 사진에만 — 스캔은 이미 고르다
   return parts.map(({ x0, x1 }, pi) => {
     const side = parts.length === 2 ? (pi === 0 ? 'L' : 'R') : null;
     const w = x1 - x0, out = new Uint8Array(w * H), rawPart = new Uint8Array(w * H);
@@ -441,6 +464,8 @@ const hangulish = (t) => /[가-힣]/.test(t);
 // OCR 결과 다듬기: 한글 사이에 잘못 낀 빈칸, 흔한 오인식
 const isHebrew = t => /[\u05D0-\u05EA]/.test(t) && !/[A-Za-z\uAC00-\uD7A3\u0370-\u03FF]/.test(t);
 function cleanText(t) {
+  t = t.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));   // 전각 영문·숫자(Ｌ) → 보통 글자
+  t = t.replace(/([가-힣])ㆍ(?=[가-힣])/g, '$1·');   // 아래아 모양 가운뎃점 → 가운뎃점
   t = t.replace(/^(\d{1,2}),(?=\s*[가-힣])/, '$1.');   // 3, 환란을 → 3. 환란을 (제목 번호)
   t = t.replace(/(^|\s)ㅣ(?=\s|$)/g, '$1|');   // 따로 선 'ㅣ'는 세로줄(꼬리말 구분선)
   return t.replace(/\s+/g, ' ').replace(/ ?([.,!?」』”’)]) ?/g, (m, p) => p + ' ').replace(/ ([.,!?])/g, '$1').trim();
@@ -457,7 +482,7 @@ export function measurePages(pages, opts = {}) {
       const ws = (l.words || []).filter(w => w.y1 > w.y0 && /[가-힣A-Za-z0-9]/.test(w.text));
       const big = ws.filter(w => hangulish(w.text) && w.text.length >= 2);
       const use = big.length >= 2 ? big : ws;
-      l.h = use.length ? median(use.map(w => w.y1 - w.y0)) : l.y1 - l.y0;
+      l.h = use.length ? (big.length >= 2 ? pct(use.map(w => w.y1 - w.y0), 0.3) : median(use.map(w => w.y1 - w.y0))) : l.y1 - l.y0;   // 잡티가 붙어 키 큰 상자 몇 개에 끌려가지 않게(제목은 모든 글자가 크다)
       l.base = use.length ? median(use.map(w => w.y1)) : l.y1;
     }
     // 글이 아닌 것(손가락·책 모서리를 글로 잘못 읽은 것): 너무 키 큰 줄
@@ -534,24 +559,30 @@ export function measurePages(pages, opts = {}) {
     p.bx1 = pct(p.body.map(l => l.x1), 0.85);
     p.emPx = median(p.body.filter(l => hangulish(l.text)).map(l => l.h)) / 0.97 || p.hMed;
     // 글자 사이를 띄워 양쪽 정렬한 책은 OCR이 음절마다 빈칸을 넣는다 → 낱말 상자 간격으로 빈칸을 다시 정한다
+    const lineGaps = (l) => { const ws = (l.words || []).filter(w => w.text.trim()).sort((a, b) => a.x0 - b.x0); return { ws, gaps: ws.slice(1).map((w, i) => w.x0 - ws[i].x1) }; };
+    const splitT = (gaps) => {
+      const gs = gaps.filter(v => v > -p.emPx * 0.5 && v < p.emPx * 1.5).sort((a, b) => a - b);   // 단 사이 큰 틈은 빼고
+      if (gs.length < 4) return null;
+      let bestT = null, bestV = -1;
+      for (let i = 1; i < gs.length; i++) {
+        const lo = gs.slice(0, i), hi = gs.slice(i);
+        const ml = lo.reduce((a, b) => a + b) / lo.length, mh = hi.reduce((a, b) => a + b) / hi.length;
+        const v = lo.length * hi.length * (mh - ml) ** 2;
+        if (v > bestV && mh - ml > p.emPx * 0.2) { bestV = v; bestT = (gs[i - 1] + gs[i]) / 2; }
+      }
+      return bestT;
+    };
+    // 쪽 전체의 문턱: 짧은 줄(대화 한 마디)은 틈이 몇 개 없어 제 문턱을 못 정하므로 이것을 쓴다
+    const pageT = median(p.lines.map(l => splitT(lineGaps(l).gaps)).filter(v => v != null));
     for (const l of p.lines) {
-      const ws = (l.words || []).filter(w => w.text.trim()).sort((a, b) => a.x0 - b.x0);
+      const { ws, gaps } = lineGaps(l);
       if (ws.length < 2) continue;
-      const gaps = ws.slice(1).map((w, i) => w.x0 - ws[i].x1);
       let g0 = Math.max(0, pct(gaps, 0.2));
       // 틈 크기가 두 무리(글자 사이 / 낱말 사이)로 갈리면 그 가운데를 문턱으로 (상자 가장자리가 들쭉날쭉해도 안정적)
       {
-        const gs = gaps.filter(v => v > -p.emPx * 0.5 && v < p.emPx * 1.5).sort((a, b) => a - b);   // 단 사이 큰 틈은 빼고
-        if (gs.length >= 4) {
-          let bestT = null, bestV = -1;
-          for (let i = 1; i < gs.length; i++) {
-            const lo = gs.slice(0, i), hi = gs.slice(i);
-            const ml = lo.reduce((a, b) => a + b) / lo.length, mh = hi.reduce((a, b) => a + b) / hi.length;
-            const v = lo.length * hi.length * (mh - ml) ** 2;
-            if (v > bestV && mh - ml > p.emPx * 0.2) { bestV = v; bestT = (gs[i - 1] + gs[i]) / 2; }
-          }
-          if (bestT != null) g0 = Math.max(bestT, p.emPx * 0.15) - p.emPx * 0.12;
-        }
+        const own = splitT(gaps), nG = gaps.filter(v => v > -p.emPx * 0.5 && v < p.emPx * 1.5).length;
+        const bestT = (nG < 8 && pageT) ? pageT : (own ?? (pageT || null));   // 틈이 몇 개 없는 짧은 줄은 쪽 전체 문턱
+        if (bestT != null) g0 = Math.max(bestT, p.emPx * 0.15) - p.emPx * 0.12;
       }
       let t;
       // 한글은 글자 단위로 쪼개 읽히므로 넓은 틈만 띄어쓰기, 영어·헬라어·숫자 낱말끼리는 늘 띄운다
@@ -570,7 +601,7 @@ export function measurePages(pages, opts = {}) {
       t = toks.map((x, i) => seps[i] + x).join('');
       l.text = cleanText(t);
       // 맞춤법·띄어쓰기 바로잡기 (원어 줄은 건드리지 않는다)
-      if (opts.fixer && /[가-힣]{2}/.test(l.text) && !/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]/.test(l.text)) {
+      if (opts.fixer && !l.role && /[가-힣]{2}/.test(l.text) && !/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]/.test(l.text)) {
         const spaceT = g0 + p.emPx * 0.12;
         const words = [];
         ws.forEach((w, i) => {
@@ -670,7 +701,21 @@ export function measurePages(pages, opts = {}) {
 export function buildBookModel(pages, M, opts = {}) {
   const exact = opts.keepLines !== false;
   // 줄 그대로 모드: 왼쪽·오른쪽 쪽(안쪽·바깥쪽 여백이 다름)을 모두 담도록 판면을 가장 넓게 잡고, 줄마다 실제 자리에서 시작
-  const exLeft = Math.min(...pages.filter(p => p.body.length).map(p => pct(p.body.map(l => l.x0), 0.03) / p.pxPerPt));
+  // 판면(글자 틀): 책은 모든 쪽의 여백이 같고, 펼친 두 쪽은 안쪽·바깥쪽 여백이 좌우로 뒤집힌다.
+  //  왼쪽 쪽: 바깥 여백이 왼쪽 / 오른쪽 쪽: 안쪽 여백이 왼쪽. 쪽마다 잰 값의 가운값으로 하나의 틀을 정한다
+  const pageWpt = M.page.w;
+  const withBody = pages.filter(p => p.body.length);
+  const outer = median(withBody.map(p => p.side === 'R' ? pageWpt - p.bx1 / p.pxPerPt : p.bx0 / p.pxPerPt));
+  const inner = median(withBody.map(p => p.side === 'R' ? p.bx0 / p.pxPerPt : pageWpt - p.bx1 / p.pxPerPt));
+  // 왼쪽·오른쪽 쪽 모두 같은 편집 용지(여백): 본문은 왼쪽 여백에서 바로 시작한다
+  //  (사진은 책을 다 펴지 못해 안쪽 여백이 좁게 찍히므로, 펼친 두 쪽은 안쪽·바깥쪽 가운데 값으로)
+  const sideM = withBody.some(p => p.side) ? (outer + inner) / 2 : median(withBody.map(q => q.bx0 / q.pxPerPt));
+  const frameLeft = () => sideM;
+  // 책의 들여쓰기는 0이거나 한 글자(문단 첫 줄) — 그 밖은 반 글자 단위
+  const snapInd = (v) => v < 0.55 ? 0 : v < 1.6 ? 1 : Math.round(v * 2) / 2;
+  const textWfr = median(withBody.map(p => (p.bx1 - p.bx0) / p.pxPerPt));
+  for (const p of pages) p.frameShift = p.body.length ? frameLeft(p) - p.bx0 / p.pxPerPt : 0;   // 이 쪽 줄들을 틀에 맞추려 옮길 거리(pt)
+  const exLeft = sideM;
   const exRight = Math.min(...pages.filter(p => p.body.length).map(p => p.w / p.pxPerPt - pct(p.body.map(l => l.x1), 0.97) / p.pxPerPt));
   const { font, sizePt, linePct, spacing } = M;
   const paras = [];
@@ -701,15 +746,21 @@ export function buildBookModel(pages, M, opts = {}) {
     for (const l of p.lines) if (l.role === 'header' || l.role === 'footer') notes.headers.push(l.text); else if (l.role === 'pageno') notes.pagenos.push(l.text.trim());
     const em = p.emPx, pitch = p.pitch, k = p.pxPerPt;
     // 이 쪽의 회색 상자 → 쪽 기준 위치의 도형 (첫 문단에 붙인다)
-    const floats = (p.boxes || []).map(bx => ({ type: 'rect', x0: bx.x0 / k, y0: bx.y0 / k, w: (bx.x1 - bx.x0) / k, h: (bx.y1 - bx.y0) / k, fill: bx.fill, ratio: bx.round ? 8 : 0, behind: true }));
-    // 쪽마다 줄 간격(사진마다 휨·원근이 달라 쪽마다 조금씩 다르다)
-    const pagePct = exact ? Math.max(100, Math.round(pitch / k / sizePt * 100)) : linePct;
+    const floats = (p.boxes || []).map(bx => ({ type: 'rect', x0: bx.x0 / k + (exact ? p.frameShift || 0 : 0), y0: bx.y0 / k, w: (bx.x1 - bx.x0) / k, h: (bx.y1 - bx.y0) / k, fill: bx.fill, ratio: bx.round ? 8 : 0, behind: true }));
+    // 줄 간격: 책은 모든 쪽이 같은 틀(판면)이므로 쪽마다 잰 값이 아니라 책 전체 값 하나로
+    const pagePct = exact ? Math.max(100, Math.round(M.pitchPt / sizePt * 100)) : linePct;
+    const lineHpt = sizePt * pagePct / 100;
     let prevSize = sizePt, prevBase = null;
     // 줄 그대로 모드는 머리말·꼬리말·쪽 번호도 제자리에 넣는다 (책 모양 그대로)
     const seq = exact ? p.lines.filter(l => !l.role || l.role === 'header' || l.role === 'footer' || l.role === 'pageno') : p.body;
     seq.forEach((l, li) => {
-      const indent = (l.x0 - p.bx0) / em;
-      const rightGap = (p.bx1 - l.x1) / em;
+      // 줄 머리 기준: 휜 종이·원근으로 판면 왼쪽 끝이 위아래로 조금씩 비스듬하므로, 이웃한 본문 줄들의 왼쪽 끝(가운값)을 기준으로 잰다
+      const near = p.body.filter(q => Math.abs(q.base - l.base) < p.pitch * 4.5);
+      const nb = near.filter(q => [...q.text].length >= (M.charsPerLine || 30) * 0.8);   // 꽉 찬 줄들
+      const localX0 = nb.length >= 3 ? pct(nb.map(q => q.x0), 0.3) : near.length >= 3 ? pct(near.map(q => q.x0), 0.2) : p.bx0;
+      const indent = (l.x0 - (Math.abs(localX0 - p.bx0) < em * 1.2 ? localX0 : p.bx0)) / em;
+      const localX1 = nb.length >= 3 ? pct(nb.map(q => q.x1), 0.7) : p.bx1;
+      const rightGap = ((Math.abs(localX1 - p.bx1) < em * 1.5 ? localX1 : p.bx1) - l.x1) / em;
       const big = l.h > em * 0.97 * 1.25 && [...l.text].length < (M.charsPerLine || 40) * 0.75;
       const centered = indent > 1.5 && Math.abs(indent - rightGap) < 1.2;
       // 줄마다 글자 크기: 본문과 12% 넘게 다르면(제목·성경 구절·인용) 그 크기로
@@ -721,10 +772,13 @@ export function buildBookModel(pages, M, opts = {}) {
       // 쪽 번호만 있는 줄: 숫자 높이는 글자 크기의 약 3/4 — 잡티가 붙어 줄 키가 부풀어도 본문보다 크게 하지 않는다
       const pnoOnly = l.role && /^\d{1,4}$/.test(l.text.trim());
       const size = pnoOnly ? Math.min(sizePt, Math.max(Math.round(sizePt * 1.4) / 2, Math.round(Math.min(...(l.words?.length ? l.words.map(w => w.y1 - w.y0) : [l.h])) / 0.75 / k * 2) / 2))
-        : tail ? sizePt : !longLine && (big || Math.abs(own - sizePt) / sizePt > 0.12) ? own : longLine && own < sizePt * 0.88 ? own : sizePt;
+        : tail ? sizePt : !longLine && (big || Math.abs(own - sizePt) / sizePt > 0.2) ? own : longLine && own < sizePt * 0.8 ? own : sizePt;   // 책 본문은 거의 한 크기 — 사진에서 잰 높이의 작은 차이(휨·기울기)는 본문 크기로 맞춘다
       // 앞 줄과의 거리: 한글은 앞 줄 높이(글자 크기 × 줄 간격)만큼 내려가므로 남는 만큼 문단 앞 간격으로
       const gapPt = prevBase == null ? (pi === 0 ? 0 : p.topOffset || 0) : (l.base - prevBase) / k - (prevSize * pagePct / 100) - 0.85 * (size - prevSize);
-      const before = li === 0 ? (p.topOffset || 0) : Math.max(0, gapPt);
+      // 같은 틀: 첫 줄은 판면 맨 위(장 시작처럼 크게 내려 시작한 쪽만 그만큼), 줄 사이는 반 줄 단위로 맞춘다
+      const snap = (v) => v < lineHpt * 0.45 ? 0 : Math.round(v / (lineHpt / 2)) * (lineHpt / 2);
+      const before = li === 0 ? (exact ? ((p.topOffset || 0) < lineHpt * 1.5 ? 0 : snap(p.topOffset)) : (p.topOffset || 0))
+        : exact && !l.role ? snap(Math.max(0, gapPt)) : Math.max(0, gapPt);
       const pageStart = li === 0 && pi > 0 && opts.pageBreaks !== false;
       if (exact) {
         // 줄 하나 = 문단 하나. 꽉 찬 줄은 배분 정렬로 판면 폭을 정확히 채운다 → 줄마다 원본과 같은 글자
@@ -737,7 +791,9 @@ export function buildBookModel(pages, M, opts = {}) {
         const restTxt = smallTxt ? l.text.slice(smallTxt.length).replace(/^\s*/, ' ') : l.text;
         const chars = [...(smallTxt || '') + restTxt];
         const sum = [...(smallTxt || '')].reduce((a, c) => a + adv(c, font), 0) * smallSize / size + [...restTxt].reduce((a, c) => a + adv(c, font), 0);
-        const widthPt = (l.x1 - l.x0) / k * 0.99;
+        // 오른쪽 끝까지 찬 본문 줄은 모든 쪽에서 같은 판면 폭으로(오른쪽 끝이 한 줄로 맞게)
+        const indPt = snapInd(indent) * em / k;
+        const widthPt = (!l.role && rightGap < 0.7 && !centered ? textWfr - indPt : (l.x1 - l.x0) / k) * 0.99;
         // 자간은 -25%~+15% 안에서만 (사진의 휨·잡티로 폭이 잘못 재어져도 글자가 흩어지지 않게)
         const sp = chars.length > 1 ? Math.max(-25, Math.min(15, Math.floor((widthPt / size - sum) / (chars.length - 1) * 100))) : spacing;
         // 굵은 제목: 본문보다 먹이 확실히 진하고 짧은 줄
@@ -762,11 +818,20 @@ export function buildBookModel(pages, M, opts = {}) {
           lineSize = Math.max(...runs.map(r => r.size));
         }
         if (bold) for (const r of runs) r.bold = true;
+        // 본문 줄의 들여쓰기는 0 또는 한 글자(사진의 휨으로 줄 머리가 들쭉날쭉한 것 맞추기), 틀 왼쪽 기준
+        const leftPt = centered ? 0 : Math.max(0, (l.role ? l.x0 / k : p.bx0 / k + snapInd(indent) * em / k) + (p.frameShift || 0) - exLeft);
+        // 한 줄이 판 밖으로 넘쳐 다음 줄로 접히지 않게: 들어갈 폭보다 길면 그 줄 글자를 조금 줄인다
+        {
+          const availPt = (M.page.w - Math.max(3 * MM, exLeft) - Math.max(3 * MM, Math.min(M.page.w - Math.max(3 * MM, exLeft) - textWfr * 1.06, M.page.w * 0.3)) - leftPt) * 0.95;   // 글꼴 너비 어림값 오차만큼 여유
+          const wid = runs.reduce((a, r) => a + [...r.text].reduce((b, c) => b + adv(c, font), 0) * r.size + [...r.text].length * (r.spacing ?? 0) / 100 * r.size, 0);
+          var fitNeed = wid > 0 ? Math.min(1, availPt / wid) : 1;   // 아래에서 책 전체로 한꺼번에 줄인다(쪽마다 글자 크기가 달라지지 않게)
+        }
         if (opts.markFixes) runs = markFixRuns(runs, l.words);
         cur = {
           align: centered ? 'CENTER' : 'LEFT',
-          left: centered ? 0 : Math.max(0, l.x0 / k - exLeft), right: 0, indent: 0,
+          left: leftPt, right: 0, indent: 0,
           before, pct: pagePct, size: lineSize, runs, pageBreak: pageStart, hardBreak: true, wordBreak: false,
+          _role: l.role || null, _bottom: !!l.role && li >= seq.length - 2 && li > 0, _fit: fitNeed, _body: !l.role && Math.abs(lineSize - sizePt) < 0.6,
         };
         if (li === 0 && floats.length) cur.floats = floats;
         flush();
@@ -790,8 +855,21 @@ export function buildBookModel(pages, M, opts = {}) {
   flush();
   for (const p of paras) { delete p._big; delete p._centered; delete p._ended; p.runs = p.runs.flatMap(splitGreek); }
   // 줄 그대로 모드는 사진 한 장마다 쪽을 나누므로, 아래 여백은 넘침 막이로 작게(보이는 자리는 같다)
-  const page = exact ? { ...M.page, left: Math.max(3 * MM, exLeft), right: 3 * MM, bottom: Math.min(M.page.bottom, 8 * MM) } : M.page;
-  if (exact) fitPages(paras, page);
+  const textWall = median(pages.filter(p => p.body.length).map(p => (p.bx1 - p.bx0) / p.pxPerPt));
+  const page = exact ? { ...M.page, left: Math.max(3 * MM, exLeft), right: Math.max(3 * MM, Math.min(M.page.w - Math.max(3 * MM, exLeft) - textWall * 1.06, M.page.w * 0.3)), bottom: Math.min(M.page.bottom, 8 * MM) } : M.page;
+  if (exact) {
+    // 판 폭에 넘치는 줄: 본문 줄은 책 전체에 같은 비율로 줄여 모든 쪽 글자 크기를 같게, 그래도 넘치는 줄만 따로 더
+    const needs = paras.filter(q => q._body && q._fit < 1).map(q => q._fit);
+    const fb = needs.length >= 2 ? Math.min(...needs.sort((a, b) => a - b).slice(0, Math.max(1, Math.ceil(needs.length * 0.9)))) : 1;
+    const shrink = (q, f) => { for (const r of q.runs) r.size = Math.floor(r.size * f * 2) / 2; q.size = Math.max(...q.runs.map(r => r.size)); };
+    for (const q of paras) {
+      if (q._body && fb < 1) shrink(q, fb);
+      const rest = (q._fit ?? 1) / (q._body ? fb : 1);
+      if (rest < 1) shrink(q, rest);
+    }
+    fitPages(paras, page); alignFooters(paras, page);
+  }
+  for (const p of paras) { delete p._role; delete p._bottom; delete p._fit; delete p._body; }
   return { paras, page, notes };
 }
 
@@ -802,6 +880,28 @@ const ORIG_RE = new RegExp(`([${ORIG}](?:[${ORIG}\\u0300-\\u036F.,;:·'’᾽ ]*
 function splitGreek(r) {
   if (!new RegExp(`[${ORIG}]`).test(r.text)) return [r];
   return r.text.split(ORIG_RE).filter(Boolean).map(t => new RegExp(`[${ORIG}]`).test(t) ? { ...r, text: t, font: GREEK_FONT } : { ...r, text: t });
+}
+
+// 꼬리말·쪽 번호는 모든 쪽에서 같은 높이에: 쪽마다 본문 길이가 달라도, 가장 아래 놓이는 쪽의 자리에 맞춰 나머지를 내린다
+function alignFooters(paras, page) {
+  const avail = (page.h - page.top - page.bottom) * 0.96;
+  const groups = [];
+  for (const p of paras) { if (!groups.length || p.pageBreak) groups.push([]); groups.at(-1).push(p); }
+  const lineH = q => q.size * q.pct / 100;
+  const info = groups.map(g => {
+    const fi = g.findIndex(q => q._bottom);
+    if (fi < 0) return null;
+    const yPrev = g.slice(0, fi).reduce((a, q) => a + q.before + lineH(q), 0);
+    return { g, fi, yPrev, natural: yPrev + g[fi].before };
+  }).filter(Boolean);
+  if (info.length < 2) return;
+  const fh = Math.max(...info.map(x => x.g.slice(x.fi).reduce((a, q) => a + lineH(q), 0)));
+  const target = Math.min(Math.max(...info.map(x => x.natural)), avail - fh);
+  for (const x of info) {
+    const extra = x.g.slice(x.fi + 1).reduce((a, q) => a + q.before, 0);   // 꼬리말이 두 줄이면 둘째 줄 간격은 그대로
+    if (target >= x.yPrev) x.g[x.fi].before = target - x.yPrev;
+    void extra;
+  }
 }
 
 // 사진 한 장 = 한 쪽: 쪽마다 줄들이 판면 높이 안에 들어가도록 줄 사이 여백 → 줄 간격 → 글자 크기 순으로 줄인다
@@ -866,7 +966,7 @@ export function fixVerseRef(t) {
   return t;
 }
 
-export async function refineOcr(lines, part, ocr) {
+export async function refineOcr(lines, part, ocr, ocrLatin = null) {
   const { g, w: W, h: H } = part;
   let L = lines.map(l => ({ ...l, words: (l.words || []).filter(w => w.text?.trim()).map(w => ({ ...w })) })).filter(l => l.words.length);
   const hs = L.flatMap(l => l.words.filter(w => /[가-힣]/.test(w.text)).map(w => w.y1 - w.y0));
@@ -996,6 +1096,48 @@ export async function refineOcr(lines, part, ocr) {
     const nw = { text: t, x0: bx.x0, y0: bx.y0, x1: bx.x1, y1: bx.y1, conf: Math.max(mc, 80), small: sh / hMed };
     Object.assign(l, lineOf([...lead, nw, ...rest]));
   }
+  // 2-1b) 본문 아래·위 여백에 홀로 떨어진 쪽 번호·꼬리말: 통째 읽기에서 빠지기 쉽다(본문과 멀리 떨어진 작은 글씨)
+  {
+    const body = L.filter(l => /[가-힣]{2}/.test(l.text) && l.x1 - l.x0 > W * 0.3);
+    if (globalThis.__koDbg) console.error('MB', body.length, budget, W, H, Math.round(hMed));
+    if (body.length >= 5) {
+      const bx0 = pct(body.map(l => l.x0), 0.1), bx1 = pct(body.map(l => l.x1), 0.9);
+      const xa = Math.max(0, Math.round(bx0 - hMed * 1.5)), xb = Math.min(W - 1, Math.round(bx1 + hMed * 1.5));
+      const lastY = Math.max(...body.map(l => l.y1)), firstY = Math.min(...body.map(l => l.y0));
+      const bands = [[Math.round(lastY + hMed * 0.8), Math.round(Math.min(H - 2, lastY + hMed * 6))], [Math.round(Math.max(1, firstY - hMed * 6)), Math.round(firstY - hMed * 0.8)]];
+      for (const [ya, yb] of bands) {
+        if (globalThis.__koDbg) console.error('BAND', ya, yb, L.filter(l => l.y1 > ya && l.y0 < yb).map(l => [l.text, Math.round(l.x0), Math.round(l.x1), Math.round(l.y0)]));
+        if (yb - ya < hMed || budget <= 0) continue;
+        if (L.some(l => l.y1 > ya && l.y0 < yb && l.x0 > xa && l.x1 < xb && (l.text.match(/[0-9가-힣]/g) || []).length >= 2)) continue;   // 이미 읽힌 줄이 있으면
+        const vals = []; for (let y = ya; y < yb; y += 3) for (let x = xa; x < xb; x += 3) vals.push(g[y * W + x]);
+        const t = Math.max(90, Math.min(140, otsu(vals)));
+        // 먹이 있는 줄(가로 띠) 찾기
+        const rows = [];
+        for (let y = ya; y < yb; y++) { let c = 0; for (let x = xa; x < xb; x++) if (g[y * W + x] < t) c++; rows.push(c); }
+        // 먹 띠 덩어리들 중 글줄 높이에 맞고 먹이 가장 많은 것
+        const segs = []; let cur = null;
+        for (let i = 0; i < rows.length; i++) {
+          if (rows[i] > 2) { if (cur && i - cur.b <= hMed * 0.3) { cur.b = i; cur.ink += rows[i]; } else { cur = { a: i, b: i, ink: rows[i] }; segs.push(cur); } }
+        }
+        const seg = segs.filter(q => q.b - q.a <= hMed * 2.2 && q.b - q.a >= hMed * 0.25).sort((p, q) => q.ink - p.ink)[0];
+        if (globalThis.__koDbg) console.error('ROWS', ya, yb, xa, xb, t, Math.min(...vals), Math.max(...rows));
+        if (globalThis.__koDbg) console.error('SEGS', segs.map(q => [q.a + ya, q.b - q.a, q.ink]));
+        if (!seg) continue;
+        const y0 = seg.a, y1 = seg.b;
+        const Y0 = ya + y0, Y1 = ya + y1;
+        let X0 = xb, X1 = xa;
+        for (let y = Y0; y <= Y1; y++) for (let x = xa; x < xb; x++) if (g[y * W + x] < t) { if (x < X0) X0 = x; if (x > X1) X1 = x; }
+        const pad = hMed * 0.6, f2 = 2;
+        const up = upscale(g, W, H, Math.max(0, X0 - pad), Math.max(0, Y0 - pad), Math.min(W - 1, X1 + pad), Math.min(H - 1, Y1 + pad), f2);
+        budget--;
+        let r; try { r = await ocr(grayPng(up.g, up.w, up.h), up.w, up.h); } catch { continue; }
+        const ws = (r || []).flatMap(x => x.words || []).filter(v => v.text?.trim() && (v.conf ?? 0) >= 55 && /[0-9가-힣A-Za-z]/.test(v.text))
+          .map(v => ({ ...v, x0: Math.max(0, X0 - pad) + v.x0 / f2, x1: Math.max(0, X0 - pad) + v.x1 / f2, y0: Math.max(0, Y0 - pad) + v.y0 / f2, y1: Math.max(0, Y0 - pad) + v.y1 / f2 }));
+        if (globalThis.__koDbg) console.error('MARGIN', ya, yb, ws.map(v => v.text + ':' + Math.round(v.conf)));
+        if (ws.length) { L.push(lineOf(ws)); L.sort((p, q) => p.y0 - q.y0); }
+      }
+    }
+  }
   // 2-2) 쪽 위아래 끝의 짧은 줄(머리말·꼬리말·쪽 번호)은 작은 글씨가 많아 통째로 키워 다시 읽는다
   for (const l of L) {
     if (budget <= 0) break;
@@ -1036,6 +1178,43 @@ export async function refineOcr(lines, part, ocr) {
       Object.assign(l, lineOf([...keep, num].sort((a, b) => a.x0 - b.x0)));
     }
   }
+  // 2-4) 한글 줄 속 영어 낱말: 한국어 모형은 로마자를 숫자·부호로 읽기 쉽다(Leanne Payne → 90000000*, F 구역 → 『 구역)
+  //      한글이 아닌 낱말(또는 한글 사이에 낀 부분)을 영어로 다시 읽어, 영어 글자로 또렷이 읽힐 때만 바꾼다. 숫자는 영어로 읽어도 숫자라 그대로 남는다
+  if (ocrLatin) {
+    let lb = 30;
+    for (const l of L) {
+      if (lb <= 0) break;
+      if (!/[가-힣]{2}/.test(l.text) || /[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]/.test(l.text)) continue;
+      for (let wi = 0; wi < l.words.length && lb > 0; wi++) {
+        const w = l.words[wi], t = w.text;
+        const m = t.match(/^([가-힣]*)([^가-힣]+?)([가-힣]*[.,!?)'"”’]*)$/);
+        if (!m || !m[2].trim() || /^[A-Za-z]{3,}[.,;:]?$/.test(m[2]) && (w.conf ?? 0) >= 80) continue;
+        const X = m[2];
+        if (/^[.,!?;:'"“”‘’()\[\]·…\-–—~]+$/.test(X)) continue;   // 문장 부호만
+        if (/^\d{1,4}[.,)]?$/.test(X) && (w.conf ?? 0) >= 80 && !m[1] && !m[3]) continue;   // 또렷한 숫자
+        const n = [...t].length, hw = (w.y1 - w.y0) * 0.95;   // 한글 한 자 너비 ≈ 글자 높이
+        const xa = w.x0 + [...m[1]].length * hw, xb = w.x1 - [...m[3]].length * hw;
+        if (xb - xa < hw * 0.4) continue;
+        const pad = hMed * 0.25, f2 = 3;
+        const u2 = upscale(g, W, H, Math.max(0, xa - pad), Math.max(0, w.y0 - pad), Math.min(W - 1, xb + pad), Math.min(H - 1, w.y1 + pad), f2);
+        lb--;
+        let r2; try { r2 = await ocrLatin(grayPng(u2.g, u2.w, u2.h), u2.w, u2.h); } catch { continue; }
+        let w2 = (r2 || []).flat().flatMap(x => x.words || [x]).filter(v => v.text?.trim());
+        // 덧붙어 읽힌 옆 글자 조각(o|, - 등)은 떼어 낸다: 앞에서부터 영어 낱말인 것만
+        { const k = w2.findIndex(v => !/^[("'“‘]?[A-Za-z][A-Za-z'’.\-]*[A-Za-z.]?[)"'”’,.;:]?$/.test(v.text) || (v.text.replace(/[^A-Za-z]/g, '').length === 1 && w2.length > 1 && !/^[A-Z]/.test(v.text))); if (k >= 0) w2 = w2.slice(0, k); }
+        w2 = w2.map(v => ({ ...v, text: v.text.replace(/[-–]+$/, '') }));
+        const t2 = w2.map(v => v.text).join(' ').trim(), c2 = w2.length ? w2.reduce((a, v) => a + (v.conf ?? 0), 0) / w2.length : 0;
+        const letters = (t2.match(/[A-Za-z]/g) || []).length;
+        if (globalThis.__koDbg) console.error('TRY', t, '->', t2, Math.round(c2));
+        const oddOrig = !/[0-9A-Za-z]/.test(X);   // 원래 부호로 읽힌 자리(『)면 한 글자 대문자는 조금 낮은 확신도 받는다
+        if (!t2 || letters < Math.max(1, t2.replace(/\s/g, '').length * 0.7) || c2 < (oddOrig && /^[A-Z]$/.test(t2) ? 60 : 72)) continue;
+        if (globalThis.__koDbg) console.error('LAT', t, '->', t2, Math.round(c2), Math.round(w.conf ?? -1));
+        const nt = m[1] + t2 + m[3];
+        l.words[wi] = { ...w, text: nt, latin: true };
+      }
+      Object.assign(l, lineOf(l.words));
+    }
+  }
   // 2-3) 줄 맨 앞에 마침표·쉼표 같은 부호만 읽힌 조각(줄 첫 글자 '이'가 '。,'로 읽히는 식)은 따로 키워 다시 읽는다
   for (const l of L) {
     if (budget <= 0) break;
@@ -1066,6 +1245,12 @@ export async function refineOcr(lines, part, ocr) {
     const okN = num.filter((l, k) => +l.words[0].text === a0 + k).length;
     if (okN < Math.ceil(num.length / 2)) continue;   // 절반 넘게 맞을 때만 (엉뚱한 곳을 바꾸지 않게)
     num.forEach((l, k) => { l.words[0].text = String(a0 + k); Object.assign(l, lineOf(l.words)); });
+  }
+  // 같은 쪽 번호가 두 번 들어간 경우(여백에서 따로 찾은 것 + 다시 읽은 꼬리말) 하나만
+  {
+    const nums = L.filter(l => /^\s*\d{1,4}\s*$/.test(l.text));
+    for (const a of nums) for (const b of nums) if (a !== b && !a._dup && !b._dup && a.text.trim() === b.text.trim() && Math.abs(a.y0 - b.y0) < hMed * 1.5 && Math.abs(a.x0 - b.x0) < hMed * 3) b._dup = true;
+    L = L.filter(l => !l._dup);
   }
   // 3) 먹 진하기: 줄 상자 안 어두운 화소 비율 (굵은 글씨일수록 높다)
   for (const l of L) {
@@ -1134,7 +1319,7 @@ function markFixRuns(runs, words) {
   return out;
 }
 
-export async function readPhotos(files, { decode, ocr, size, font, keepLines, pageBreaks, onProgress, koScore, markFixes } = {}) {
+export async function readPhotos(files, { decode, ocr, ocrLatin, size, font, keepLines, pageBreaks, onProgress, koScore, markFixes } = {}) {
   const pages = [];
   let n = 0;
   const fixer = koScore ? (await import('./ko-fix.mjs')).makeKoFixer(koScore) : null;
@@ -1145,7 +1330,8 @@ export async function readPhotos(files, { decode, ocr, size, font, keepLines, pa
     for (const part of rectifyPhoto(img)) {
       onProgress?.({ step: 'ocr', page: ++n });
       const png = grayPng(part.g, part.w, part.h);
-      const lines = await refineOcr(await ocr(png, part.w, part.h), part, ocr);
+      const lines = await refineOcr(await ocr(png, part.w, part.h), part, ocr, ocrLatin);
+      if (globalThis.__koDbg) console.error('BOT', part.h, lines.slice(-3).map(l => [l.text, Math.round(l.y0), Math.round(l.x0), Math.round(l.conf ?? -1)]));
       // 회색 상자 안 글이 아닌 줄(상자 무늬를 글로 잘못 읽은 것)은 버린다
       const mconf = (l) => { const ws = (l.words || []).filter(w => w.conf != null); return ws.length ? ws.reduce((a, w) => a + w.conf, 0) / ws.length : 100; };
       const inBox = (l) => part.boxes.some(b => l.x0 >= b.x0 - 4 && l.x1 <= b.x1 + 4 && l.y0 >= b.y0 - 4 && l.y1 <= b.y1 + 4 && (!/[가-힣]{2}/.test(l.text) || mconf(l) < 65));
