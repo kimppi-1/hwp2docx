@@ -555,7 +555,7 @@ export function buildHwpx(model, opts = {}) {
     }
     let out = '';
     blocks.forEach((b, i) => {
-      const floatXml = (b.floats || []).map(fl => fl.type === 'line' ? lineShapeXml(fl) : fl.type === 'rect' ? rectShapeXml(fl) : picXml(fl, { treatAsChar: 0, textWrap: fl.behind ? 'BEHIND_TEXT' : 'IN_FRONT_OF_TEXT', vertRelTo: 'PAPER', horzRelTo: 'PAPER', vertAlign: 'TOP', horzAlign: 'LEFT', vertOffset: H(fl.y || 0), horzOffset: H(fl.x || 0), flowWithText: 0, allowOverlap: 1 })).join('');
+      const floatXml = (b.floats || []).map(fl => fl.type === 'line' ? lineShapeXml(fl) : fl.type === 'rect' ? rectShapeXml(fl) : picXml(fl, { treatAsChar: 0, textWrap: fl.behind ? 'BEHIND_TEXT' : 'IN_FRONT_OF_TEXT', vertRelTo: fl.vrel || 'PAPER', horzRelTo: 'PAPER', vertAlign: 'TOP', horzAlign: 'LEFT', vertOffset: H(fl.y || 0), horzOffset: H(fl.x || 0), flowWithText: 0, allowOverlap: 1 })).join('');
       const lead = (i === 0 ? env.lead || '' : '') + (floatXml ? `<hp:run charPrIDRef="0">${floatXml}</hp:run>` : '') || undefined;
       if (b.k === 'tbl') { out += tableXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }
       if (b.k === 'img') { out += imgBlockXml(b, { lead, markR: b.markR ?? blocks[i - 1]?.markR, before: tBef[i] + Math.max(0, aft[i]), after: tAft[i], pageBreak: b.pageBreak }); return; }

@@ -67,3 +67,66 @@ export function mergeScript(A, Blines, script = 'greek', { latin = true } = {}) 
   }
   return lines.map(l => l.filter(w => !w._gone).map(({ _li, _gone, ...w }) => w).sort((p, q) => p.x0 - q.x0)).filter(l => l.length);
 }
+
+// ── 영어가 많은 쪽(영어 교재·코드·주소): 한국어 모형은 로마자를 숫자·부호로 읽는다(iced → 16060) ──
+// 한글 없는 글자·숫자 조각이 여럿이면 영어로 한 번 더 읽을 만하다
+export function hasLatinish(words) {
+  const sus = words.filter(w => !HANGUL.test(w.text) && /[A-Za-z0-9]{2}/.test(w.text) && !/^\d{1,4}[.,)]?$/.test(w.text)).length;
+  return sus >= 6 || (sus >= 3 && sus >= words.length * 0.12);
+}
+// A: 한국어로 읽은 줄들, B: 영어로 읽은 줄들 → 한글이 또렷이 읽힌 자리는 그대로, 영어 낱말이 또렷이 읽힌 자리는 영어로
+export function mergeLatin(A, Blines) {
+  const WORD = /^[("'‘“]*[A-Za-z][A-Za-z'’\-]*[A-Za-z]?[.,;:!?)"'”’~]*$/;
+  const letters = (t) => (t.match(/[A-Za-z]/g) || []).length;
+  const syl = (t) => (t.match(/[가-힣]/g) || []).length;
+  const B = [];
+  for (const l of Blines) {
+    const good = l.filter(w => WORD.test(w.text) && letters(w.text) >= 3 && (w.conf ?? 0) >= 75);
+    const strong = good.length >= 2;
+    for (const w of l) {
+      if (!WORD.test(w.text)) continue;
+      const n = letters(w.text), c = w.conf ?? 0;
+      if ((n >= 3 && c >= 80) || (strong && c >= (n >= 2 ? 55 : 70))) B.push({ ...w, _strong: strong });
+    }
+  }
+  if (!B.length) return A;
+  const lines = A.map(l => l.map(w => ({ ...w })));
+  const all = lines.flatMap((l, li) => l.map(w => (w._li = li, w)));
+  for (const b of B) {
+    const hit = all.filter(a => !a._gone && !a._lat && xin(a, b));
+    const bc = b.conf ?? 0;
+    if (!hit.length) {
+      // 한국어로는 아예 못 읽은 자리: 영어 줄이 분명하고 같은 높이의 줄이 있으면 끼워 넣는다
+      if (!b._strong || bc < 80) continue;
+      // 다른 낱말 자리와 겹치면(행간 대역처럼 줄이 촘촘한 곳) 끼워 넣지 않는다
+      if (all.some(a => !a._gone && Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0 && Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 0.2 * (b.y1 - b.y0))) continue;
+      const li = lines.findIndex(l => l.some(a => !a._gone && Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 0.5 * (b.y1 - b.y0)) && !l.some(a => !a._gone && Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0.3 * (b.x1 - b.x0)));
+      if (li < 0) continue;
+      const { _strong, ...w } = b; lines[li].push({ ...w, _li: li, _lat: true }); all.push(lines[li][lines[li].length - 1]);
+      continue;
+    }
+    // 헬라어·히브리어로 읽어 둔 자리는 건드리지 않는다
+    if (hit.some(a => /[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]/.test(a.text))) continue;
+    // 한글이 또렷이 읽힌 자리는 한글로 둔다(영어 줄이 분명하고 영어가 아주 또렷하면 흐린 한글 조각은 넘긴다)
+    const korean = hit.some(a => { const k = syl(a.text), c = a.conf ?? 0; return k >= 1 && (c >= 75 || (!(b._strong && bc >= 88) && (c >= 60 || (k >= 2 && c >= 30)))); });
+    if (korean) continue;
+    // 이미 영어로 또렷이 읽힌 같은 글이면 그대로
+    if (hit.length === 1 && hit[0].text === b.text) continue;
+    const aMax = Math.max(...hit.map(a => a.conf ?? 0));
+    if (hit.every(a => /^[A-Za-z][A-Za-z'’\-]*[.,;:!?]?$/.test(a.text)) && aMax >= 85 && bc < aMax) continue;
+    for (const a of hit) a._gone = true;
+    const { _strong, ...w } = b;
+    lines[hit[0]._li].push({ ...w, _li: hit[0]._li, _lat: true }); all.push(lines[hit[0]._li][lines[hit[0]._li].length - 1]);
+  }
+  const res = lines.map(l => l.filter(w => !w._gone).map(({ _li, _gone, ...w }) => w).sort((p, q) => p.x0 - q.x0)).filter(l => l.length);
+  // 영어 줄 속 홀로 선 세로 막대(|, l, 1)는 'I' 다. 낱말 앞에 붙은 것(|did)도 뗀다
+  for (const l of res) {
+    if (l.filter(w => w._lat || /^[A-Za-z]{2,}[.,!?]?$/.test(w.text)).length < 3) continue;
+    for (let i = 0; i < l.length; i++) {
+      const w = l[i], nx = l[i + 1];
+      if (/^[|l1]$/.test(w.text) && nx && /^[a-z]/.test(nx.text)) l[i] = { ...w, text: 'I' };
+      else if (/^\|[a-z]{2,}/.test(w.text)) l[i] = { ...w, text: 'I ' + w.text.slice(1) };
+    }
+  }
+  return res.map(l => l.map(({ _lat, ...w }) => w));
+}

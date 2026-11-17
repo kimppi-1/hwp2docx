@@ -1,4 +1,4 @@
-import { mergeScript, hasGreekish } from './ocr-merge.mjs';
+import { mergeScript, hasGreekish, hasLatinish, mergeLatin } from './ocr-merge.mjs';
 import { loadWLC, fixHebrew } from './hebrew-bible.mjs';
 // 브라우저에서 사진 → 한글: 그림 해독은 캔버스, 글자 인식은 tesseract.js (한국어+영어, 처음 한 번 언어 자료를 받음)
 import { readPhotos } from './photo-read.mjs';
@@ -72,6 +72,17 @@ export async function decodeImageBrowser(bytes, name) {
   return { w, h, data: ctx.getImageData(0, 0, w, h).data };
 }
 
+// 오려 낸 그림(삽화·QR 코드)을 JPEG로: 색 그림을 PNG로 넣으면 파일이 몇 배 커진다
+export async function jpegBrowser(rgb, w, h) {
+  const cv = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const ctx = cv.getContext('2d'), im = ctx.createImageData(w, h);
+  for (let i = 0, j = 0; i < w * h; i++, j += 4) { im.data[j] = rgb[i * 3]; im.data[j + 1] = rgb[i * 3 + 1]; im.data[j + 2] = rgb[i * 3 + 2]; im.data[j + 3] = 255; }
+  ctx.putImageData(im, 0, 0);
+  const blob = cv.convertToBlob ? await cv.convertToBlob({ type: 'image/jpeg', quality: 0.86 }) : await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.86));
+  if (!blob) return null;
+  return { data: new Uint8Array(await blob.arrayBuffer()), ext: 'jpg', mime: 'image/jpeg' };
+}
+
 const workers = new Map();
 async function worker(lang = 'kor', psm = '6') {
   const key = lang + '/' + psm;
@@ -114,6 +125,10 @@ export async function ocrBrowser(png, opts = {}) {
       } catch (e) { console.warn('hebrew pass', e); }
     }
   }
+  // 영어가 많은 쪽(영어 교재·코드·주소): 영어로 한 번 더 읽어, 한글·원어가 아닌 자리의 영어 낱말을 바로잡는다(원어 읽기 뒤에 한다)
+  if (opts.latin !== false && hasLatinish(A.flat())) {
+    try { A = mergeLatin(A, await wordLines('eng', png)); } catch (e) { console.warn('latin pass', e); }
+  }
   return A.map(words => ({ text: words.map(x => x.text).join(' '), words, x0: Math.min(...words.map(x => x.x0)), y0: Math.min(...words.map(x => x.y0)), x1: Math.max(...words.map(x => x.x1)), y1: Math.max(...words.map(x => x.y1)) }));
 }
 
@@ -152,7 +167,7 @@ export async function photosToHwpx(files, opts = {}) {
     opts.onProgress?.({ step: 'spellLoad' });
     try { opts = { ...opts, koScore: await loadKiwiBrowser() }; } catch (e) { console.warn('spell model', e); opts = { ...opts, spellFailed: String(e?.message || e) }; }
   }
-  const m = await readPhotos(files, { decode: decodeImageBrowser, ocr: ocrBrowser, ocrLatin: ocrLatinBrowser, ...opts });
+  const m = await readPhotos(files, { decode: decodeImageBrowser, ocr: ocrBrowser, ocrLatin: ocrLatinBrowser, encodeImage: jpegBrowser, ...opts });
   if (opts.spellFailed) m.report.spellFailed = opts.spellFailed;
   // 다른 책을 찍은 사진들이면 책마다 따로 파일
   const outFiles = m.groups ? m.groups.map(g => ({ names: g.names, hwpx: bookModelToHwpx(g), report: { ...g.report, ...(opts.spellFailed ? { spellFailed: opts.spellFailed } : {}) }, paragraphs: g.paras.length })) : null;
