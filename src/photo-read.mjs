@@ -218,14 +218,21 @@ function findPageBest(g, w, h, rgba) {
     const dAng = (x, y) => { let d = Math.abs(x - y) % 180; return d > 90 ? 180 - d : d; };
     const d1 = dAng(ang(q[0], q[1]), ang(q[3], q[2])), d2 = dAng(ang(q[0], q[3]), ang(q[1], q[2]));
     if (globalThis.__pageDbg) (globalThis.__angDbg ||= []).push([+d1.toFixed(1), +d2.toFixed(1)]);
-    if (d1 > 6.2 || d2 > 27) return false;   // 낮게 비스듬히 찍으면 옆변만 벌어진다(사다리꼴) — 그건 받아들인다
+    // 아주 낮게 찍어 옆변이 더 벌어진 것(27°~34°)은 '넓은 각'으로 표시해 두고, 글씨를 거의 다 담을 때만 쓴다
+    if (d1 > 6.2 || d2 > 34 || (d2 > 27 && d1 > 3)) return false;
+    r.wide = d2 > 27;
+    // 넓은 각인데 꼭짓점 셋 이상이 사진 가장자리에 붙었으면 쪽이 아니라 사진 귀퉁이를 따라간 것이다
+    if (r.wide && q.filter(p => p[0] < w * 0.015 || p[0] > w * 0.985 || p[1] < h * 0.015 || p[1] > h * 0.985).length >= 3) return false;   // 낮게 비스듬히 찍으면 옆변만 벌어진다(사다리꼴) — 그건 받아들인다
     return pw / ph > 0.4 && pw / ph < 2.4 && ar > w * h * 0.15 && Math.min(L(q[0], q[1]), L(q[3], q[2])) > Math.max(L(q[0], q[1]), L(q[3], q[2])) * 0.55 && Math.min(L(q[0], q[3]), L(q[1], q[2])) > Math.max(L(q[0], q[3]), L(q[1], q[2])) * 0.55;
   };
   let A = findPage(g, w, h, rgba, 'bright');
+  const dbg = globalThis.process?.env?.PGDBG, pq = (r) => r.found ? r.quad.map(p => p.map(v => Math.round(v / w * 100)).join(',')).join(' ') : 'none';
+  if (dbg) { globalThis.__angDbg = []; console.error('PG A', pq(A), 'sane', sane(A), JSON.stringify(globalThis.__angDbg)); }
   if (!sane(A)) A = whole;
   if (globalThis.__pageDbg) globalThis.__pageScore = null;
   if (!rgba) return A;
   let B; try { B = findPage(g, w, h, rgba, 'table'); } catch { return A; }
+  if (dbg) { globalThis.__angDbg = []; console.error('PG B', pq(B), 'sane', sane(B), JSON.stringify(globalThis.__angDbg)); }
   if (!sane(B)) B = whole;
   if (A === whole && B === whole) return whole;
   if (A !== whole && !A.corner) A.corner = null;
@@ -262,8 +269,9 @@ function findPageBest(g, w, h, rgba) {
   const cov = (r) => ink.filter(p => inside(r.quad, p)).length / ink.length;
   const sc = cands.map(r => ({ r, n: cov(r), a: area(r.quad) / (w * h) }));
   // 사진 전체는 책상 위 다른 책 글씨까지 담으므로, 찾은 사각형들이 전체 글씨의 대부분을 못 담을 때만 쓴다
-  const found = sc.filter(c => c.r !== whole && c.r.found);
+  const found = sc.filter(c => c.r !== whole && c.r.found && (!c.r.wide || c.n >= sc[0].n * 0.95));
   const maxN = found.length ? Math.max(...found.map(c => c.n)) : 0;
+  if (dbg) console.error('PG cov', sc.map(c => (c.r === whole ? 'whole' : c.r === A ? 'A' : c.r === B ? 'B' : 'corner') + ' n=' + c.n.toFixed(2) + ' a=' + c.a.toFixed(2)).join(' | '), 'ink', ink.length);
   if (!found.length || maxN < sc[0].n * 0.8) return whole;
   const ok = found.filter(c => c.n >= maxN - 0.015).sort((x, y) => (Math.abs(x.a - y.a) < 0.015 ? 0 : x.a - y.a));
   if (globalThis.__pageDbg) globalThis.__pageScore = { cov: sc.map(c => +c.n.toFixed(3)), area: sc.map(c => +c.a.toFixed(2)) };
@@ -754,7 +762,23 @@ export function findBoxes(g, W, H) {
 // ── 사진 한 장 → 펴진 쪽 그림들 ──
 export function rectifyPhoto(img) {
   const g = toGray(img.data, img.w, img.h);
-  const { quad, found } = findPageBest(g, img.w, img.h, img.data);
+  // 쪽 찾기는 늘 같은 크기(긴 변 2576)에서 한다 — 사진 크기에 따라 결과가 달라지지 않게(휴대폰 원본은 더 크다). 펴기·글자 읽기는 원래 크기로.
+  let quad, found;
+  const fsc = Math.max(img.w, img.h) / 2576;
+  if (fsc > 1.12) {   // 스캔본(긴 변 2900 이하)은 그대로
+    const sw = Math.round(img.w / fsc), sh = Math.round(img.h / fsc), sd = new Uint8ClampedArray(sw * sh * 4);
+    for (let y = 0; y < sh; y++) {
+      const ya = Math.floor(y * fsc), yb = Math.min(img.h, Math.max(ya + 1, Math.floor((y + 1) * fsc)));
+      for (let x = 0; x < sw; x++) {
+        const xa = Math.floor(x * fsc), xb = Math.min(img.w, Math.max(xa + 1, Math.floor((x + 1) * fsc)));
+        let r = 0, gg = 0, bb = 0, n = 0;
+        for (let Y = ya; Y < yb; Y++) for (let X = xa; X < xb; X++) { const i = (Y * img.w + X) * 4; r += img.data[i]; gg += img.data[i + 1]; bb += img.data[i + 2]; n++; }
+        const o = (y * sw + x) * 4; sd[o] = r / n; sd[o + 1] = gg / n; sd[o + 2] = bb / n; sd[o + 3] = 255;
+      }
+    }
+    const r = findPageBest(toGray(sd, sw, sh), sw, sh, sd);
+    found = r.found; quad = r.quad.map(q => [Math.min(img.w - 1, q[0] * fsc), Math.min(img.h - 1, q[1] * fsc)]);
+  } else ({ quad, found } = findPageBest(g, img.w, img.h, img.data));
   if (globalThis.__pageDbg) globalThis.__pageDbg.push({ quad, found, w: img.w, h: img.h, sc: globalThis.__pageScore });
   const len = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const pw = (len(quad[0], quad[1]) + len(quad[3], quad[2])) / 2;
@@ -1298,7 +1322,7 @@ export function buildBookModel(pages, M, opts = {}) {
     if (exact) for (const pc of p.pics || []) {
       const above = seq.filter(l => (l._zone != null ? l.y0 : l.y1) <= pc.y0 + p.emPx * 0.3 && !l.role).sort((a, b) => b.y0 - a.y0)[0], below = seq.filter(l => l.y0 >= pc.y0).sort((a, b) => a.y0 - b.y0)[0];
       const anc = above || below;
-      const item = { type: 'pic', x0: pc.x0 / k + (p.frameShift || 0), w: (pc.x1 - pc.x0) / k, h: (pc.y1 - pc.y0) / k, data: pc.data, ext: pc.ext, mime: pc.mime, pxW: pc.pxW, pxH: pc.pxH };
+      const item = { type: 'pic', x0: pc.x0 / k + (p.frameShift || 0), w: (pc.x1 - pc.x0) / k, h: (pc.y1 - pc.y0) / k, data: pc.data, ext: pc.ext, mime: pc.mime, pxW: pc.pxW, pxH: pc.pxH, behind: !!pc.behind };
       if (!anc) { loosePics.push({ ...item, y0: pc.y0 / k }); continue; }
       item.dy = (pc.y0 - anc.y0) / k;
       if (!ruleAt.has(anc)) ruleAt.set(anc, []); ruleAt.get(anc).push(item);
@@ -1423,11 +1447,13 @@ export function buildBookModel(pages, M, opts = {}) {
         // 한 줄이 판 밖으로 넘쳐 다음 줄로 접히지 않게: 들어갈 폭보다 길면 그 줄 글자를 조금 줄인다
         {
           const areaPt = C ? C.cellPt : M.page.w - Math.max(3 * MM, exLeft) - Math.max(3 * MM, Math.min(M.page.w - Math.max(3 * MM, exLeft) - textWfr * 1.06, M.page.w * 0.3)), slack = C ? 0.97 : 0.95;   // 글꼴 너비 어림값 오차만큼 여유
-          const wid = runs.reduce((a, r) => a + [...r.text].reduce((b, c) => b + adv(c, font), 0) * r.size + [...r.text].length * (r.spacing ?? 0) / 100 * r.size, 0);
+          let wid = runs.reduce((a, r) => a + [...r.text].reduce((b, c) => b + adv(c, font), 0) * r.size + [...r.text].length * (r.spacing ?? 0) / 100 * r.size, 0);
+          // 영어·숫자·기호가 많은 줄은 글꼴 너비 어림값이 모자라 한글에서 줄이 접히곤 한다(접히면 한 줄이 늘어 쪽이 넘친다) → 그만큼 넉넉히 잡는다
+          { const tx = runs.map(r => r.text).join(''), la = (tx.match(/[!-~]/g) || []).length, sp = (tx.match(/ /g) || []).length; if (tx.length) wid *= 1 + 0.12 * la / tx.length + (la >= tx.length * 0.1 ? 0.12 * sp / tx.length : 0); }
           // 판면 오른쪽 밖에서 시작하는 줄(그림 옆 딱지 글): 글자를 0 아래로 줄이지 말고 줄 머리를 안으로 당긴다
           if (wid > 0 && (areaPt - leftPt) * slack < wid * 0.7) leftPt = Math.max(0, areaPt - wid * 0.7 / slack);
           const availPt = (areaPt - leftPt) * slack;
-          var fitNeed = wid > 0 ? Math.max(0.5, Math.min(1, availPt / wid)) : 1;   // 아래에서 책 전체로 한꺼번에 줄인다(쪽마다 글자 크기가 달라지지 않게)
+          var fitNeed = wid > 0 ? Math.max(0.5, Math.min(1, availPt / wid)) : 1;
         }
         runs = colorRuns(runs, l.words);
         if (opts.markFixes) runs = markFixRuns(runs, l.words);
@@ -1517,6 +1543,7 @@ export function buildBookModel(pages, M, opts = {}) {
       for (const g of groups) {
         let excess = g.reduce((a, q) => a + q.before + q.size * q.pct / 100, 0) - limit;
         for (let i = g.length - 1; i > 0 && excess > 0; i--) { const cut = Math.min(g[i].before, excess); g[i].before -= cut; excess -= cut; }
+        if (globalThis.process?.env?.FITDBG) console.error('FIT', g.length, 'used', Math.round(g.reduce((a, q) => a + q.before + q.size * q.pct / 100, 0)), 'limit', Math.round(limit), 'excess', Math.round(excess), g.map(q => (q.k === 'tbl' ? 'T' : '') + Math.round(q.before) + '+' + (q.size * q.pct / 100).toFixed(1) + (q.runs?.some(r => r.size > q.size + 0.01) ? '!' + Math.max(...q.runs.map(r => r.size)).toFixed(1) : '') + (q.floats?.length ? 'F' : '')).join(' '));
       }
     }
     // 줄·상자를 붙일 문단에 '문단 위 간격'이 있으면, 한글은 그 문단 기준 자리를 다르게 잡는다(사진 비교로 확인).
@@ -1541,7 +1568,7 @@ export function buildBookModel(pages, M, opts = {}) {
         q.floats = q.floats || [];
         for (const r of q._rules) {
           if (r.dy < 0) r.dy = 0;   // 한글은 문단 위쪽(음수) 자리를 받지 않는다
-          if (r.type === 'pic') q.floats.push({ type: 'pic', vrel: 'PARA', x0: r.x0, y0: r.dy, w: r.w, h: r.h, data: r.data, ext: r.ext, mime: r.mime, pxW: r.pxW, pxH: r.pxH });
+          if (r.type === 'pic') q.floats.push({ type: 'pic', vrel: 'PARA', x0: r.x0, y0: r.dy, w: r.w, h: r.h, data: r.data, ext: r.ext, mime: r.mime, pxW: r.pxW, pxH: r.pxH, behind: !!r.behind });
           else if (r.type === 'rect') q.floats.push({ type: 'rect', vrel: 'PARA', x0: r.x0, y0: r.dy, w: r.w, h: Math.min(r.h, page.h - (page.top + y + r.dy) - 2), fill: r.fill, ratio: r.ratio, behind: true });
           else q.floats.push({ type: 'line', vrel: 'PARA', x1: r.x1, x2: r.x2, y1: r.dy, y2: r.dy, w: r.w, color: '000000' });
         }
@@ -2040,6 +2067,198 @@ function markFixRuns(runs, words) {
 
 // 그림(삽화·사진·QR 코드) 찾기: 또렷이 읽힌 글자를 지우고 남은 잉크가 크게 뭉친 자리.
 //  그 자리의 색 그림을 오려(종이 색을 희게 맞춰) 돌려주고, 그 안에서 글로 잘못 읽힌 조각은 버린다
+// 꾸밈 층: 색 그림에서 종이를 흰색으로 고르고(조명 얼룩·그늘 지움) 읽어 낸 글자를 지운 뒤, 남은 것(띠·색 상자·그림·표 선·읽지 못한 글)을
+//  덩어리마다 오려 '글 뒤 그림'으로 돌려준다. 띠·상자·그림을 따로따로 알아맞히는 대신 사진에 있는 그대로 깐다.
+//  돌려주는 값: [{ x0, y0, x1, y1, rgb, pxW, pxH, behind: true }]
+function designLayer(part, lines) {
+  const P = part.planes; if (!P) return null;
+  if (!part.pageFound) return null;   // 쪽을 못 찾은 사진(책상·손이 함께 든 사진)은 꾸밈 층을 만들지 않는다
+  const [R, G, B] = P, W = part.w, H = part.h, N = W * H;
+  const all = lines.flatMap(l => l.words || []).filter(w => w.x0 != null);
+  const hs = all.filter(w => /[가-힣]/.test(w.text) && (w.conf ?? 100) >= 60).map(w => w.y1 - w.y0).sort((a, b) => a - b);
+  const em = hs[hs.length >> 1] || Math.max(16, W / 45);
+  // 1) 종이 밝기 면: 칸마다 밝은 쪽 값 → 색 없는 칸만 골라 매끈한 2차 면으로 맞춘다(상자·그림은 면 아래로 벗어나므로 빠진다)
+  const cs = Math.max(8, Math.round(W / 64)), gw = Math.ceil(W / cs), gh = Math.ceil(H / cs);
+  const Lc = new Float32Array(gw * gh), Sc = new Float32Array(gw * gh), Cc = [new Float32Array(gw * gh), new Float32Array(gw * gh), new Float32Array(gw * gh)];
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    const v = [];
+    for (let y = gy * cs; y < Math.min(H, gy * cs + cs); y += 2) for (let x = gx * cs; x < Math.min(W, gx * cs + cs); x += 2) { const i = y * W + x; v.push([0.3 * R[i] + 0.59 * G[i] + 0.11 * B[i], R[i], G[i], B[i]]); }
+    v.sort((a, b) => a[0] - b[0]);
+    const q = v[Math.floor(v.length * 0.8)] || [0, 0, 0, 0], k = gy * gw + gx;
+    Lc[k] = q[0]; Sc[k] = Math.max(q[1], q[2], q[3]) - Math.min(q[1], q[2], q[3]); Cc[0][k] = q[1]; Cc[1][k] = q[2]; Cc[2][k] = q[3];
+  }
+  const cand = []; for (let k = 0; k < gw * gh; k++) if (Sc[k] < 24 && Lc[k] > 70) cand.push(k);
+  const fitQuad = (ks) => {   // 최소제곱: L = a + bx + cy + dxx + eyy + fxy
+    const A = Array.from({ length: 6 }, () => new Float64Array(7));
+    for (const k of ks) { const x = (k % gw) / gw - 0.5, y = ((k / gw) | 0) / gh - 0.5, f = [1, x, y, x * x, y * y, x * y]; for (let i = 0; i < 6; i++) { for (let j = 0; j < 6; j++) A[i][j] += f[i] * f[j]; A[i][6] += f[i] * Lc[k]; } }
+    for (let i = 0; i < 6; i++) { let m = i; for (let r = i + 1; r < 6; r++) if (Math.abs(A[r][i]) > Math.abs(A[m][i])) m = r; [A[i], A[m]] = [A[m], A[i]]; if (Math.abs(A[i][i]) < 1e-9) return null; for (let r = 0; r < 6; r++) { if (r === i) continue; const t = A[r][i] / A[i][i]; for (let j = i; j < 7; j++) A[r][j] -= t * A[i][j]; } }
+    const c = A.map((row, i) => row[6] / row[i]);
+    return (gx, gy) => { const x = gx / gw - 0.5, y = gy / gh - 0.5; return c[0] + c[1] * x + c[2] * y + c[3] * x * x + c[4] * y * y + c[5] * x * y; };
+  };
+  let paperOK = cand.length >= gw * gh * 0.25, surf = null, keep = cand;
+  if (paperOK) {
+    // 처음엔 밝은 절반으로 시작(상자가 섞이면 면이 아래로 끌려간다)
+    const srt = cand.map(k => Lc[k]).sort((a, b) => a - b), med = srt[srt.length >> 1];
+    keep = cand.filter(k => Lc[k] >= med * 0.9);
+    for (let it = 0; it < 5 && keep.length >= 30; it++) {
+      const f = fitQuad(keep); if (!f) break; surf = f;
+      const nk = cand.filter(k => { const r = Lc[k] / Math.max(1, f(k % gw, (k / gw) | 0)); return r > 0.955 && r < 1.06; });
+      if (nk.length < 30) break; keep = nk;
+    }
+    if (!surf || keep.length < gw * gh * 0.2) paperOK = false;
+  }
+  const out = [];
+  const clean = [new Uint8Array(N), new Uint8Array(N), new Uint8Array(N)];
+  if (paperOK) {
+    // 가장자리 그늘(제본 쪽·말린 쪽): 세로 띠마다 종이 칸들의 (실제 ÷ 면) 가운데값 — 매끈하게 변하는 것만 그늘로 본다
+    const col = new Float32Array(gw).fill(1);
+    for (let gx = 0; gx < gw; gx++) {
+      const rs = []; for (let gy = 0; gy < gh; gy++) { const k = gy * gw + gx; if (Sc[k] < 24) { const r = Lc[k] / Math.max(1, surf(gx, gy)); if (r > 0.6 && r < 1.08) rs.push(r); } }
+      rs.sort((a, b) => a - b); if (rs.length >= gh * 0.5) col[gx] = rs[Math.floor(rs.length * 0.7)];
+    }
+    for (let gx = 0; gx < gw; gx++) if (gx > gw * 0.12 && gx < gw * 0.88) col[gx] = Math.max(col[gx], 0.985);   // 가운데는 그늘이 없다(넓은 상자를 그늘로 지우지 않게)
+    const wb = [0, 1, 2].map(ch => { const v = keep.map(k => Cc[ch][k] / Math.max(1, Lc[k])).sort((a, b) => a - b); return v[v.length >> 1] || 1; });
+    const bgAt = (x, y) => { const fx = Math.min(gw - 1.001, Math.max(0, x / cs - 0.5)), x0 = Math.floor(fx), t = fx - x0; return Math.max(40, surf(x / cs - 0.5, y / cs - 0.5) * (col[x0] * (1 - t) + col[Math.min(gw - 1, x0 + 1)] * t)); };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, bg = (x & 7) === 0 || x === 0 ? (designLayer._bg = bgAt(x, y)) : designLayer._bg;
+      for (let ch = 0; ch < 3; ch++) clean[ch][i] = Math.min(255, Math.round(P[ch][i] * 248 / (bg * wb[ch])));
+    }
+  } else { for (let ch = 0; ch < 3; ch++) clean[ch].set(P[ch]); }
+  // 2) 읽어 낸 낱말 지우기: 낱말 네모 둘레의 색(가운데값)으로 칠한다 — 종이 위면 흰색, 띠·상자 위면 그 색
+  const medOf = (a) => { a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : 255; };
+  const rects = [];
+  for (const l of lines) {
+    const ws = (l.words || []).filter(w => w.x0 != null);
+    if (l.x0 == null || l.y1 - l.y0 > em * 5) continue;
+    if (!ws.length || ws.length < (l.words || []).length) { rects.push([l.x0, l.y0, l.x1, l.y1]); continue; }   // 자리 없는 낱말(다시 읽어 바꾼 것)이 섞인 줄은 줄 네모 통째로
+    ws.sort((a, b) => a.x0 - b.x0);
+    const ly0 = Math.min(l.y0, ...ws.map(w => w.y0)), ly1 = Math.max(l.y1, ...ws.map(w => w.y1));
+    let cur = [ws[0].x0, ly0, ws[0].x1, ly1];
+    for (let k = 1; k < ws.length; k++) {
+      if (ws[k].x0 - cur[2] < em * 1.6) cur[2] = Math.max(cur[2], ws[k].x1);   // 낱말 사이 틈까지 이어서 지운다(획 끝이 남지 않게)
+      else { rects.push(cur); cur = [ws[k].x0, ly0, ws[k].x1, ly1]; }
+    }
+    rects.push(cur);
+  }
+  for (const q of rects) {
+    const mx = em * 0.2, my = em * 0.28, x0 = Math.max(0, Math.floor(q[0] - mx)), y0 = Math.max(0, Math.floor(q[1] - my)), x1 = Math.min(W - 1, Math.ceil(q[2] + mx)), y1 = Math.min(H - 1, Math.ceil(q[3] + my));
+    if (x1 - x0 < 2 || y1 - y0 < 2) continue;
+    // 긴 줄은 토막마다 그 둘레 색으로(상자 안팎에 걸친 줄·그늘진 줄)
+    const seg = Math.max(1, Math.round((x1 - x0) / (em * 4)));
+    for (let k = 0; k < seg; k++) {
+      const sx0 = Math.round(x0 + (x1 - x0) * k / seg), sx1 = Math.round(x0 + (x1 - x0) * (k + 1) / seg);
+      const ring = [[], [], []], st = Math.max(1, Math.round((sx1 - sx0) / 30));
+      for (let x = sx0; x <= sx1; x += st) for (const y of [y0, y1]) { const i = y * W + x; for (let ch = 0; ch < 3; ch++) ring[ch].push(clean[ch][i]); }
+      const c = ring.map(medOf);
+      for (let y = y0; y <= y1; y++) for (let x = sx0; x <= sx1; x++) { const i = y * W + x; clean[0][i] = c[0]; clean[1][i] = c[1]; clean[2][i] = c[2]; }
+    }
+  }
+  // 3) 종이(거의 흰 점)는 흰색으로, 나머지가 꾸밈
+  const c = 4, cw = Math.ceil(W / c), ch_ = Math.ceil(H / c), ink = new Uint8Array(cw * ch_);
+  const isDesign = (i) => { const r = clean[0][i], g = clean[1][i], b = clean[2][i], mx = Math.max(r, g, b), mn = Math.min(r, g, b); return paperOK ? (0.3 * r + 0.59 * g + 0.11 * b < 218 || mx - mn > 26) : true; };
+  if (paperOK) for (let i = 0; i < N; i++) if (!isDesign(i)) { clean[0][i] = 255; clean[1][i] = 255; clean[2][i] = 255; }
+  if (paperOK) {
+    // 가장자리 정리: (가) 가장자리에서 이어진 살색(책을 쥔 손) (나) 가장자리 띠 안의 색 없는 회색(제본 쪽 그늘·옆 쪽·책 두께)은 지운다
+    const k2 = 8, kw = Math.ceil(W / k2), kh = Math.ceil(H / k2), skin = new Uint8Array(kw * kh), seen = new Uint8Array(kw * kh);
+    for (let gy = 0; gy < kh; gy++) for (let gx = 0; gx < kw; gx++) {
+      let n = 0, sk = 0, gr = 0;
+      for (let y = gy * k2; y < Math.min(H, gy * k2 + k2); y += 2) for (let x = gx * k2; x < Math.min(W, gx * k2 + k2); x += 2) {
+        const i = y * W + x, r = clean[0][i], g = clean[1][i], b = clean[2][i]; n++;
+        if (r === 255 && g === 255 && b === 255) continue;
+        if (r - g >= 10 && r - b >= 28 && g >= b - 4) sk++; else if (Math.max(r, g, b) - Math.min(r, g, b) < 34) gr++;
+      }
+      const nearEdge = gx < kw * 0.05 || gx >= kw * 0.95 || gy < kh * 0.025 || gy >= kh * 0.975;
+      skin[gy * kw + gx] = sk * 2 >= n ? 1 : (nearEdge && (gr + sk) * 3 >= n ? 2 : 0);
+    }
+    const wipe = (gx, gy) => { for (let y = Math.max(0, gy * k2 - k2); y < Math.min(H, gy * k2 + 2 * k2); y++) for (let x = Math.max(0, gx * k2 - k2); x < Math.min(W, gx * k2 + 2 * k2); x++) { const i = y * W + x; clean[0][i] = 255; clean[1][i] = 255; clean[2][i] = 255; } };
+    // 제본 쪽(펼친 책의 안쪽) 띠는 그늘·옆 쪽이 비치므로 통째로 비운다
+    if (part.side === 'L' || part.side === 'R') {
+      const bw = Math.round(W * 0.05), xa = part.side === 'L' ? W - bw : 0;
+      for (let y = 0; y < H; y++) for (let x = xa; x < xa + bw; x++) { const i = y * W + x; clean[0][i] = 255; clean[1][i] = 255; clean[2][i] = 255; }
+    }
+    const st = [];
+    for (let gx = 0; gx < kw; gx++) for (const gy of [0, 1, kh - 2, kh - 1]) if (skin[gy * kw + gx]) st.push(gy * kw + gx);
+    for (let gy = 0; gy < kh; gy++) for (const gx of [0, 1, kw - 2, kw - 1]) if (skin[gy * kw + gx]) st.push(gy * kw + gx);
+    for (const k of st) seen[k] = 1;
+    while (st.length) {
+      const k = st.pop(), x = k % kw, y = (k / kw) | 0; wipe(x, y);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= kw || Y >= kh) continue; const q = Y * kw + X; if (seen[q] || !skin[q]) continue; seen[q] = 1; st.push(q); }
+    }
+  }
+  if (!paperOK) {
+    // 종이가 안 보이는 쪽(쪽 전체가 색 바탕): 쪽 전체를 그림 한 장으로
+    out.push({ x0: 0, y0: 0, x1: W, y1: H, whole: true });
+  } else {
+    for (let gy = 0; gy < ch_; gy++) for (let gx = 0; gx < cw; gx++) {
+      let n = 0, k = 0;
+      for (let y = gy * c; y < Math.min(H, gy * c + c); y += 2) for (let x = gx * c; x < Math.min(W, gx * c + c); x += 2) { k++; if (clean[0][y * W + x] !== 255 || clean[1][y * W + x] !== 255 || clean[2][y * W + x] !== 255) n++; }
+      ink[gy * cw + gx] = n * 2 >= k ? 1 : 0;
+    }
+    const r = Math.max(2, Math.round(em * 0.5 / c)), tmp = new Uint8Array(cw * ch_), dil = new Uint8Array(cw * ch_);
+    for (let y = 0; y < ch_; y++) { let last = -1e9; for (let x = 0; x < cw; x++) { if (ink[y * cw + x]) last = x; if (x - last <= r) tmp[y * cw + x] = 1; } last = 1e9; for (let x = cw - 1; x >= 0; x--) { if (ink[y * cw + x]) last = x; if (last - x <= r) tmp[y * cw + x] = 1; } }
+    for (let x = 0; x < cw; x++) { let last = -1e9; for (let y = 0; y < ch_; y++) { if (tmp[y * cw + x]) last = y; if (y - last <= r) dil[y * cw + x] = 1; } last = 1e9; for (let y = ch_ - 1; y >= 0; y--) { if (tmp[y * cw + x]) last = y; if (last - y <= r) dil[y * cw + x] = 1; } }
+    const lab = new Int32Array(cw * ch_), regs = [];
+    for (let i0 = 0; i0 < dil.length; i0++) {
+      if (!dil[i0] || lab[i0]) continue;
+      const id = regs.length + 1, st = [i0]; lab[i0] = id; let x0 = cw, x1 = 0, y0 = ch_, y1 = 0, n = 0;
+      while (st.length) { const k = st.pop(), x = k % cw, y = (k / cw) | 0; n += ink[k]; if (ink[k]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } for (const q of [k - 1, k + 1, k - cw, k + cw]) { if (q < 0 || q >= dil.length || lab[q] || !dil[q]) continue; if ((q === k - 1 && x === 0) || (q === k + 1 && x === cw - 1)) continue; lab[q] = id; st.push(q); } }
+      regs.push({ id, x0: x0 * c, y0: y0 * c, x1: Math.min(W, (x1 + 1) * c), y1: Math.min(H, (y1 + 1) * c), n });
+    }
+    for (const q of regs) {
+      const bw = q.x1 - q.x0, bh = q.y1 - q.y0, inkPx = q.n * c * c;
+      if (Math.max(bw, bh) < em * 2.2 || inkPx < em * em * 0.5) continue;      // 점·얼룩·글자 한두 자 크기
+      if (Math.min(bw, bh) < em * 0.22) continue;                                 // 가는 줄은 선으로 따로 긋는다
+      // 사진 가장자리에 붙은 가늘고 긴 것(책등 그늘·옆 쪽·책상)은 뺀다
+      const edge = q.x0 < W * 0.012 || q.x1 > W * 0.988 || q.y0 < H * 0.012 || q.y1 > H * 0.988;
+      // 덩어리의 색: 살색(손)·색 없는 옅은 회색(그늘)인지
+      let nn = 0, skin = 0, sat = 0, lum = 0;
+      for (let y = q.y0; y < q.y1; y += 3) for (let x = q.x0; x < q.x1; x += 3) {
+        if (lab[((y / c) | 0) * cw + ((x / c) | 0)] !== q.id) continue;
+        const i = y * W + x, r = clean[0][i], g = clean[1][i], b = clean[2][i]; if (r === 255 && g === 255 && b === 255) continue;
+        nn++; if (r - g >= 12 && r - b >= 35 && g >= b) skin++; sat += Math.max(r, g, b) - Math.min(r, g, b); lum += 0.3 * r + 0.59 * g + 0.11 * b;
+      }
+      if (!nn) continue;
+      if (skin > nn * 0.5 && (edge || bw * bh > W * H * 0.02)) continue;       // 손
+      if (edge && (Math.min(bw, bh) < em * 2.5 || sat / nn < 40)) continue;   // 가장자리에 붙은 것은 색이 뚜렷한 것(띠)만 — 가는 것·회색 그늘·옆 쪽은 뺀다
+      if (bw * bh > N * 0.45) continue;   // 쪽의 절반 가까이를 덮는 덩어리는 그늘·손까지 한데 붙은 것 — 믿지 않는다
+      if (edge && bh > H * 0.6 && bw < W * 0.2) continue;   // 옆 가장자리를 따라 선 긴 띠(옆 쪽·책상·책 두께)
+      const mSat = sat / nn, mLum = lum / nn, dens = inkPx / (bw * bh);
+      if (mSat < 30 && Math.min(bw, bh) < em * 2 && Math.max(bw, bh) > em * 10) continue;   // 색 없는 길고 가는 것(그늘 줄·책 두께)
+      // 이 쪽이 '꾸민 쪽'인지: 색이 뚜렷한 덩어리(띠·색 상자·색 그림)나 짙은 그림(QR·사진)이 하나라도 있어야 한다
+      const strong = (bw * bh >= N * 0.012 && mSat >= 30) || (bw >= em * 3.5 && bh >= em * 3.5 && dens >= 0.35 && mLum < 150);
+      out.push({ x0: q.x0, y0: q.y0, x1: q.x1, y1: q.y1, id: q.id, lab, cw, c, strong });
+    }
+    // 쪽의 절반 넘게 덮으면(잘못 고른 종이 면·그늘) 믿지 않는다
+    const cov = out.reduce((a, q) => a + (q.x1 - q.x0) * (q.y1 - q.y0), 0);
+    if (cov > N * 1.6) return null;
+    // 글만 있는 쪽(색 띠·그림이 없는 쪽)은 예전 방식 그대로 둔다 — 그늘이나 읽다 만 글 조각을 그림으로 깔지 않는다
+    if (!out.some(q => q.strong)) return null;
+  }
+  // 4) 덩어리마다 오려 내기(다른 덩어리·종이는 흰색), 큰 것은 줄인다
+  const res = [];
+  for (const q of out) {
+    const x0 = Math.floor(q.x0), y0 = Math.floor(q.y0), w = Math.floor(q.x1 - q.x0), h = Math.floor(q.y1 - q.y0);
+    if (w < 4 || h < 4) continue;
+    const f = Math.max(1, Math.ceil(Math.max(w, h) / (q.whole ? 1300 : 1100))), ow = Math.floor(w / f), oh = Math.floor(h / f);
+    if (ow < 2 || oh < 2) continue;
+    const rgb = new Uint8Array(ow * oh * 3);
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const acc = [0, 0, 0]; let n = 0;
+      for (let dy = 0; dy < f; dy++) for (let dx = 0; dx < f; dx++) {
+        const X = x0 + x * f + dx, Y = y0 + y * f + dy, i = Y * W + X; n++;
+        if (q.lab && q.lab[((Y / q.c) | 0) * q.cw + ((X / q.c) | 0)] !== q.id) { acc[0] += 255; acc[1] += 255; acc[2] += 255; continue; }
+        acc[0] += clean[0][i]; acc[1] += clean[1][i]; acc[2] += clean[2][i];
+      }
+      const o = (y * ow + x) * 3; rgb[o] = Math.round(acc[0] / n); rgb[o + 1] = Math.round(acc[1] / n); rgb[o + 2] = Math.round(acc[2] / n);
+    }
+    res.push({ x0, y0, x1: x0 + w, y1: y0 + h, rgb, pxW: ow, pxH: oh, behind: true, whole: !!q.whole });
+  }
+  if (globalThis.process?.env?.LAYDBG) {
+    const fs = globalThis.__layFs; if (fs) { const buf = Buffer.alloc(N * 3); for (let i = 0; i < N; i++) { buf[i * 3] = clean[0][i]; buf[i * 3 + 1] = clean[1][i]; buf[i * 3 + 2] = clean[2][i]; } fs.writeFileSync(`${globalThis.process.env.LAYDBG}_${designLayer._n = (designLayer._n || 0) + 1}.ppm`, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`), buf])); }
+    console.error('LAYER', W, H, 'paper', paperOK, 'em', Math.round(em), res.map(q => [Math.round(q.x0 / W * 100), Math.round(q.y0 / H * 100), Math.round((q.x1 - q.x0) / W * 100), Math.round((q.y1 - q.y0) / H * 100)].join(',')).join(' | '));
+  }
+  return res;
+}
 function findPictures(part, lines) {
   const P = part.planes; if (!P) return { lines, pics: [] };
   const [R, G, B, MK] = P, W = part.w, H = part.h, g = part.g;
@@ -2345,6 +2564,15 @@ export async function readPhotos(files, { decode, ocr, ocrLatin, size, font, kee
       if (!globalThis.process?.env?.NOCOLOR) { try { ({ lines, bars } = colorize(part, lines)); } catch (e) { if (globalThis.__koDbg) console.error('colorize', e); } }
       let pics = [];
       if (!globalThis.process?.env?.NOPICS) { try { ({ lines, pics } = findPictures(part, lines)); } catch (e) { if (globalThis.__koDbg) console.error('pictures', e); } }
+      lines = dropJunk(lines);
+      // 꾸밈 층(띠·색 상자·그림·읽지 못한 글을 사진 그대로 글 뒤에 깐다) — 되면 따로 찾은 그림·띠·상자 대신 이것을 쓴다
+      let layer = null;
+      if (!globalThis.process?.env?.NOLAYER) { try { layer = designLayer(part, lines); } catch (e) { layer = null; if (globalThis.__koDbg) console.error('layer', e); } }
+      if (layer) {
+        const hit = (b) => layer.some(q => { const ox = Math.min(b.x1, q.x1) - Math.max(b.x0, q.x0), oy = Math.min(b.y1, q.y1) - Math.max(b.y0, q.y0); return ox > 0 && oy > 0 && ox * oy > (b.x1 - b.x0) * (b.y1 - b.y0) * 0.4; });
+        part.boxes = part.boxes.filter(b => !hit(b)); bars = bars.filter(b => !hit(b));
+        pics = layer;
+      }
       for (const q of pics) {
         // 그림 파일로: 넘겨받은 인코더(브라우저는 JPEG)가 있으면 그것으로, 없으면 PNG
         let enc = null;
@@ -2353,7 +2581,6 @@ export async function readPhotos(files, { decode, ocr, ocrLatin, size, font, kee
         else { q.data = encodePng(q.pxW, q.pxH, 2, q.rgb); q.ext = 'png'; q.mime = 'image/png'; }
         delete q.rgb;
       }
-      lines = dropJunk(lines);
       let zones = [];
       if (!globalThis.process?.env?.NOCOLS) { try { ({ lines, zones } = splitColumns(lines, part.w, part.h)); } catch (e) { if (globalThis.__koDbg) console.error('columns', e); } }
       part.planes = null;   // 색 그림은 여기까지만 쓴다(쪽마다 쥐고 있으면 메모리가 모자란다)
